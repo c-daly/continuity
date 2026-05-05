@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# bin/continuity — CLI entry point.
+#
+# For shell callers (hooks, scripts, debugging). Mirrors the MCP server's
+# tool surface as command-line subcommands.
+set -euo pipefail
+CONTINUITY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec python3 "$CONTINUITY_ROOT/lib/cli.py" "$@"

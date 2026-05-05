@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "continuity": {
+      "command": "${CONTINUITY_ROOT}/bin/continuity-server"
+    }
+  }
+}

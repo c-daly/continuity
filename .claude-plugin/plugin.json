@@ -1,0 +1,8 @@
+{
+  "name": "continuity",
+  "version": "0.0.1",
+  "description": "Cross-project surfacing and meta-concerns curation for Claude Code",
+  "author": {
+    "name": "c-daly"
+  }
+}

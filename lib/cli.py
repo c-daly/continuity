@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from record_insight import record_insight  # noqa: E402
 from resume_brief import resume_brief  # noqa: E402
 
 
@@ -30,10 +31,22 @@ def main() -> int:
         help="Project name (basename under <vault>/10-projects/)",
     )
 
+    ri = sub.add_parser(
+        "record-insight",
+        help="Write a project-scoped insight (body read from stdin)",
+    )
+    ri.add_argument("--project", required=True, help="Project name")
+    ri.add_argument("--title", required=True, help="Insight title")
+
     args = parser.parse_args()
 
     if args.cmd == "resume-brief":
         print(resume_brief(args.project))
+        return 0
+    if args.cmd == "record-insight":
+        body = sys.stdin.read()
+        ref = record_insight(project=args.project, title=args.title, body=body)
+        print(ref)
         return 0
     return 1
 

@@ -198,3 +198,43 @@ def test_exists_no_projects_root(tmp_path):
     """Vault without 10-projects/ returns False rather than crashing."""
     wp = VaultWriteProvider(vault_path=tmp_path)
     assert wp.exists("cont.insight", "x") is False
+
+
+# --- path traversal rejection ---
+
+
+@pytest.mark.parametrize(
+    "bad_project",
+    ["..", "../escape", "/abs/path", "nested/path", ".", ""],
+)
+def test_write_rejects_traversal_in_project(fake_vault, bad_project):
+    wp = VaultWriteProvider(vault_path=fake_vault)
+    with pytest.raises(ValueError):
+        wp.write("cont.insight", "ok", {"project": bad_project}, "b")
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    ["..", "../escape", "/abs/path", "nested/path", "."],
+)
+def test_write_rejects_traversal_in_id(fake_vault, bad_id):
+    wp = VaultWriteProvider(vault_path=fake_vault)
+    with pytest.raises(ValueError):
+        wp.write("cont.insight", bad_id, {"project": "test-project"}, "b")
+
+
+def test_exists_rejects_traversal_in_id(fake_vault):
+    wp = VaultWriteProvider(vault_path=fake_vault)
+    with pytest.raises(ValueError):
+        wp.exists("cont.insight", "../escape")
+
+
+def test_write_does_not_escape_vault_root(fake_vault, tmp_path):
+    """Confirm that traversal would have escaped without the validation."""
+    wp = VaultWriteProvider(vault_path=fake_vault)
+    sentinel_outside = tmp_path / "outside.md"
+    # Without validation, project='..' under '10-projects' would resolve
+    # into tmp_path. Confirm it raises rather than writing there.
+    with pytest.raises(ValueError):
+        wp.write("cont.insight", "outside", {"project": ".."}, "x")
+    assert not sentinel_outside.exists()

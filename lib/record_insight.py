@@ -13,6 +13,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_write_provider  # noqa: E402
+from vault_write_provider import validate_basename  # noqa: E402
 from write_provider import WriteProvider  # noqa: E402
 
 
@@ -46,8 +47,9 @@ def record_insight(
         ``"<kind>:<id>"`` reference string, e.g.
         ``"cont.insight:2026-05-09-some-slug"``.
     """
-    if not project:
-        raise ValueError("project is required")
+    # project flows to filesystem path construction in VaultWriteProvider;
+    # validate up front for a clearer error than the writer-layer rejection.
+    validate_basename(project, "project name")
     if not title.strip():
         raise ValueError("title is required")
     if not body.strip():

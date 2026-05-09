@@ -3,6 +3,7 @@ date: 2026-05-07
 project: continuity
 type: implementation-plan
 status: current
+last-revised: 2026-05-08
 supersedes: 2026-05-03-implementation-plan-v3.md
 builds-on:
   - 2026-05-06-continuity-design-v4.md
@@ -10,6 +11,8 @@ builds-on:
   - ~/.claude/plugins/continuity/.claude/decisions/2026-05-07-memory-as-own-plugin.md
   - ~/.claude/plugins/continuity/.claude/decisions/2026-05-07-pm-as-own-plugin.md
   - ~/.claude/plugins/continuity/.claude/decisions/2026-05-07-continuity-as-context-stitcher.md
+refined-by:
+  - 2026-05-08-reader-writer-architecture.md
 ---
 
 # Continuity — implementation plan (2026-05-07)
@@ -20,6 +23,7 @@ builds-on:
 - **Memory and pm are peer plugins, not part of continuity.** Build them when their need surfaces; pm is deferred until something concrete demands it.
 - **Continuity's write target is configurable.** When the target is the vault, continuity owns the file-writing code path. When the target is another plugin (memory), continuity delegates via MCP. Setup choice, not code-organization choice.
 - **Phase 0 already shipped.** Vault read provider + resume-brief composer + MCP server + CLI (`bin/continuity`); agent-swarm SessionStart hook consumes it (PR #92 merged 2026-05-06). Branch `feature/phase-0` in continuity repo not yet merged to continuity master — landing it is item 0 below.
+- **(Added 2026-05-08) Cross-plugin `(reader, writer)` contract.** Every state-owning plugin exposes `<plugin>_reader` and `<plugin>_writer` interfaces. Continuity's `WriteProvider` (Phase 1 below) is the first instance and prototype; memory, pm, experiment adopt the same shape when they land. Each interface admits multiple implementations (FS, sqlite, fixture, cached). See `2026-05-08-reader-writer-architecture.md` for the full contract.
 
 ## Sequencing principle
 
@@ -55,6 +59,8 @@ Make the 2026-05-07 decisions real in code. Smallest possible end-to-end path th
 
 **What this proves:** the 2026-05-07 picture works end-to-end with one provider; memory plugin can be added later without changing continuity's surface.
 
+**(2026-05-08 note)** `WriteProvider` is the prototype for the cross-plugin `(reader, writer)` pattern. Keep it continuity-local for now; do not preemptively factor `vault_writer` into a shared layer. Promotion to a vault-layer concern happens when memory plugin starts (Phase 2). Multiplicity (multiple impls per interface) emerges naturally from Phase 1.3 (`MemoryWriteProvider` stub) — already two impls of the same interface.
+
 ## Phase 2 — Memory plugin v0
 
 Build when the volume of continuity writes (or other consumers' need for shared memory) makes the vault-direct path feel limiting. Per build plan; restated here with today's decision boundaries.
@@ -69,6 +75,8 @@ Build when the volume of continuity writes (or other consumers' need for shared 
 | 2.6 | SessionStart hook: pull relevant memory entries via memory__query | ~60 lines | Replaces harness auto-memory loading. |
 
 **Exit:** memory plugin installed alongside continuity; `~/.claude/projects/.../memory/` content migrated to vault; CLAUDE.md "Continuity (until plugin lands)" section deleted.
+
+**(2026-05-08 note)** Memory plugin should expose `memory_reader` and `memory_writer` interfaces per the cross-plugin contract. Item 2.4's MCP tools (`memory__write/read/query`) are concrete bindings on those interfaces. Items 2.2 (`SubstrateProvider`) sits *below* the writer in the layer stack (it's the storage abstraction the writer composes on); the writer adds dedupe, scope inference, frontmatter, index-update policy on top. Auto-memory protocol from CLAUDE.md becomes the default writer's policy. Decide here whether to **promote `vault_writer` out of continuity** into a shared vault layer (recommended) — the Phase 1 `VaultWriteProvider` becomes the implementation behind it.
 
 ## Phase 2.5 — Activate `MemoryWriteProvider` in continuity *(small)*
 
@@ -97,11 +105,15 @@ The reader/composer half catches up with the writer half. Driven by what's missi
 
 **Exit:** Resume briefs get noticeably richer; first emergent-insight write happens unprompted; continuity's read+write loop is closed.
 
+**(2026-05-08 note)** Each new read provider in this phase satisfies a typed reader interface continuity depends on. Optional readers (Serena especially) gracefully degrade — synthesized output omits that section rather than crashing.
+
 ## Phase 4 — PM plugin v0 *(deferred until driver appears)*
 
 No commitment to timing. When agent-swarm's `pm` agent reference becomes blocking, or when project lifecycle bookkeeping becomes painful, build this. Build plan's Phase 2 item, restated.
 
 Schemas: `pm.intake_decision`, `pm.lifecycle_event`, `pm.status_snapshot`. MCP tools: `pm__intake`, `pm__triage`, `pm__status`. Resolves dead `pm` references in agent-swarm workflows.
+
+**(2026-05-08 note)** PM plugin exposes `pm_reader` and `pm_writer` per the cross-plugin contract. Resolve **narrative-ownership** (pm canonical vs. continuity-drafted with promotion bridge) before this lands — see `2026-05-08-reader-writer-architecture.md` § Open.
 
 ## Phase 5 — Experiment plugin v0 *(deferred until driver appears)*
 
@@ -120,6 +132,13 @@ Same. When experiment cadence picks up enough to warrant the move, lift bench sc
 - Cross-cutting writes (feedback, principles, patterns): are they `cont.*` schemas continuity owns, or `mem.*` schemas memory owns and continuity reads? Decide when the first such case is concrete.
 - Whether continuity has its own dedicated vault subdirectory or scatters writes per project. Lean: per-project (e.g., `10-projects/<X>/insights/`); revisit if scatter becomes hard to query.
 
+**Opened 2026-05-08** (from cross-plugin contract work, not blocking Phase 1):
+
+- Narrative ownership (pm canonical vs. continuity-drafted with promote-bridge). Decide before Phase 4.
+- `vault_writer` promotion out of continuity (decide at Phase 2 entry).
+- MCP tool surface scope per plugin (full reader/writer methods exposed, or subset?).
+- Write-authority enforcement (per-tenant subtree validation in writer interface, or convention-only?).
+
 ## Suggested next concrete move
 
 Phase 0.5 (15 min — merge `feature/phase-0` to continuity master) followed by Phase 1.1 + 1.2 (the WriteProvider interface and VaultWriteProvider impl, ~150 lines, ~half a day). That gets the 2026-05-07 decisions into code with the shortest path to a working generative write.
@@ -130,4 +149,5 @@ Phase 0.5 (15 min — merge `feature/phase-0` to continuity master) followed by 
 - 2026-05-05 build plan (parent of this plan): `2026-05-05-build-plan.md`
 - 2026-05-04 reframe (drove the plugin extractions): `2026-05-04-memory-and-structure-reframe.md`
 - 2026-05-07 decisions: `~/.claude/plugins/continuity/.claude/decisions/2026-05-07-*.md`
+- 2026-05-08 cross-plugin reader/writer architecture (refines WriteProvider into uniform contract): `2026-05-08-reader-writer-architecture.md`
 - v3 implementation plan (superseded): `2026-05-03-implementation-plan-v3.md`

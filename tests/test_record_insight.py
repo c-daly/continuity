@@ -90,3 +90,10 @@ def test_cli_record_insight(fake_vault, tmp_path, monkeypatch, capsys):
     assert len(written) == 1
     text = written[0].read_text()
     assert "Body via stdin." in text
+
+
+def test_record_insight_rejects_traversal_in_project(fake_vault):
+    wp = VaultWriteProvider(vault_path=fake_vault)
+    for bad in ["..", "../escape", "/abs/path", "nested/path"]:
+        with pytest.raises(ValueError, match="Invalid project name"):
+            record_insight(project=bad, title="t", body="b", provider=wp)

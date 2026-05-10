@@ -24,3 +24,6 @@ venv/
 .logs/
 logs/
 *.log
+
+# Local Claude Code state
+.claude/

@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 # bin/continuity — CLI entry point.
 #
-# For shell callers (hooks, scripts, debugging). Mirrors the MCP server's
-# tool surface as command-line subcommands.
+# Mirrors the MCP server's tool surface as command-line subcommands.
+# Uses the plugin's .venv (same bootstrap as continuity-server) so the
+# CLI works without system-wide pip installs.
 set -euo pipefail
 CONTINUITY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec python3 "$CONTINUITY_ROOT/lib/cli.py" "$@"
+VENV="$CONTINUITY_ROOT/.venv"
+
+if [[ ! -x "$VENV/bin/python" ]]; then
+    # Delegate bootstrap to continuity-server for DRY (just need the venv)
+    "$CONTINUITY_ROOT/bin/continuity-server" --bootstrap-only </dev/null >&2 2>/dev/null || true
+    if [[ ! -x "$VENV/bin/python" ]]; then
+        if command -v uv >/dev/null 2>&1; then
+            uv venv "$VENV" >&2
+            uv pip install --python "$VENV/bin/python" mcp "pyyaml>=6.0" >&2
+        else
+            echo "continuity: $VENV missing; install 'uv' or create .venv manually (see bin/continuity-server)." >&2
+            exit 1
+        fi
+    fi
+fi
+
+exec "$VENV/bin/python" "$CONTINUITY_ROOT/lib/cli.py" "$@"

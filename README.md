@@ -48,3 +48,21 @@ Three components, ~210 lines total:
 3. agent-swarm SessionStart hook integration — calls continuity at session start
 
 Phase 0 ships value with no memory plugin needed. The vault is the canonical source; vault-cli (or its successor) handles harvesting external state into vault.
+
+## Runtime dependencies
+
+continuity's MCP server uses the [mcp](https://pypi.org/project/mcp/) Python package (FastMCP). The package is installed into a plugin-local virtual environment at `.venv/`, not into the host Python, so the plugin doesn't pollute system site-packages.
+
+### First-run setup
+
+If `uv` (https://docs.astral.sh/uv/) is on PATH, `bin/continuity-server` and `bin/continuity` auto-bootstrap `.venv` on first invocation. No manual steps required.
+
+If `uv` is unavailable, create the venv manually:
+
+```
+cd ~/.claude/plugins/continuity
+python3 -m venv .venv
+.venv/bin/pip install mcp 'pyyaml>=6.0'
+```
+
+The CLI (`bin/continuity resume-brief <project>`) and the MCP server (`bin/continuity-server`) both use the same venv. The CLI surface has no `mcp` runtime dependency itself, but reuses the venv for consistency.

@@ -52,8 +52,24 @@ class VaultProvider:
         return sorted(p.name for p in projects_dir.iterdir() if p.is_dir())
 
     def project_exists(self, project: str) -> bool:
-        """Return True if 10-projects/<project>/ exists."""
-        return (self.vault_path / "10-projects" / project).is_dir()
+        """Return True if 10-projects/<project>/ exists, case-insensitively."""
+        return self.resolve_project(project) is not None
+
+    def resolve_project(self, project: str) -> Optional[str]:
+        """Return the canonical project directory name for a user-supplied name."""
+        projects_dir = self.vault_path / "10-projects"
+        exact = projects_dir / project
+        if exact.is_dir():
+            return exact.name
+
+        if not projects_dir.is_dir():
+            return None
+
+        target = project.casefold()
+        for candidate in projects_dir.iterdir():
+            if candidate.is_dir() and candidate.name.casefold() == target:
+                return candidate.name
+        return None
 
     def get_narrative_sections(self, project: str, last_n: int = 3) -> list[dict]:
         """Read the last N H2 sections from <project>/narrative.md.

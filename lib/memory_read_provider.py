@@ -60,23 +60,12 @@ class MemoryReadProvider:
         self.memory_bin = Path(memory_bin)
 
     def available(self) -> bool:
-        """True if the memory CLI exists and responds to --help."""
-        if not self.memory_bin.exists():
-            return False
-        try:
-            result = subprocess.run(
-                [str(self.memory_bin), "--help"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-        except (subprocess.SubprocessError, OSError):
-            return False
-        return result.returncode == 0
+        """True if the memory binary exists and is executable."""
+        return self.memory_bin.exists() and os.access(self.memory_bin, os.X_OK)
 
     def list(
         self,
-        type: Optional[str] = None,
+        type_: Optional[str] = None,
         subject: Optional[str] = None,
     ) -> list[MemoryObservation]:
         """Return parsed memory entries, optionally filtered by type/subject.
@@ -87,8 +76,8 @@ class MemoryReadProvider:
         bad bullet).
         """
         cmd = [str(self.memory_bin), "list"]
-        if type is not None:
-            cmd.extend(["--type", type])
+        if type_ is not None:
+            cmd.extend(["--type", type_])
         if subject is not None:
             cmd.extend(["--subject", subject])
 

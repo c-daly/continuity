@@ -123,12 +123,12 @@ def _map_to_memory(kind: str, id: str, frontmatter: dict[str, Any]) -> dict[str,
     memory_type = _memory_type_for_kind(kind)
     validate_basename(id, "id")
 
-    project = frontmatter.get("project")
+    project = str(frontmatter.get("project") or "").strip()
     if not project:
         raise ValueError(
             f"MemoryWriteProvider requires 'project' in frontmatter for kind {kind!r}"
         )
-    subject = str(project)
+    subject = project
     validate_basename(subject, "project")
 
     title = _collapse_spaces(str(frontmatter.get("title") or id))

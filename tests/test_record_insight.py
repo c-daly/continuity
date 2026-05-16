@@ -6,6 +6,7 @@ from datetime import date
 import pytest
 
 import cli
+from memory_write_provider import MemoryWriteProvider
 from record_insight import _slug, record_insight
 from vault_write_provider import VaultWriteProvider
 
@@ -135,6 +136,99 @@ def test_cli_record_insight_with_memory_provider(tmp_path, monkeypatch, capsys):
     assert args[-1] == "Second-order continuity insight: Memory Path"
     assert "Source: continuity" in stdin_file.read_text()
     assert "Body via memory provider." in stdin_file.read_text()
+
+
+def test_cli_record_insight_reports_memory_provider_errors(tmp_path, monkeypatch, capsys):
+    memory_bin = tmp_path / "memory"
+    memory_bin.write_text(
+        "#!/bin/sh\n"
+        "echo 'memory entry already exists at <project:x>' >&2\n"
+        "exit 1\n"
+    )
+    memory_bin.chmod(0o755)
+    (tmp_path / "config.yaml").write_text("write_provider: memory\n")
+
+    monkeypatch.setenv("CONTINUITY_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("MEMORY_BIN", str(memory_bin))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "continuity",
+            "record-insight",
+            "--project",
+            "constellation",
+            "--title",
+            "Collision Path",
+        ],
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO("Body.\n"))
+
+    rc = cli.main()
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == ""
+    assert "error: memory write failed with exit code 1" in captured.err
+    assert "memory entry already exists" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_record_insight_vault_and_memory_semantic_parity(fake_vault, tmp_path):
+    memory_args = tmp_path / "memory-args.txt"
+    memory_body = tmp_path / "memory-body.md"
+    memory_bin = tmp_path / "memory"
+    memory_bin.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$@\" > '{memory_args}'\n"
+        f"cat > '{memory_body}'\n"
+    )
+    memory_bin.chmod(0o755)
+    today = date(2026, 5, 9)
+    title = "A Useful Lesson"
+    body = "The body."
+
+    vault_ref = record_insight(
+        project="test-project",
+        title=title,
+        body=body,
+        provider=VaultWriteProvider(vault_path=fake_vault),
+        today=today,
+    )
+    memory_ref = record_insight(
+        project="test-project",
+        title=title,
+        body=body,
+        provider=MemoryWriteProvider(memory_bin=memory_bin),
+        today=today,
+    )
+
+    assert memory_ref == vault_ref
+    _, insight_id = memory_ref.split(":", 1)
+    vault_text = (
+        fake_vault
+        / "10-projects"
+        / "test-project"
+        / "insights"
+        / f"{insight_id}.md"
+    ).read_text()
+    args = memory_args.read_text().splitlines()
+    assert "project: test-project" in vault_text
+    assert "title: A Useful Lesson" in vault_text
+    assert "type: insight" in vault_text
+    assert args == [
+        "write",
+        "--type",
+        "project",
+        "--name",
+        insight_id,
+        "--subject",
+        "test-project",
+        "--description",
+        "Second-order continuity insight: A Useful Lesson",
+    ]
+    assert "Kind: cont.insight" in memory_body.read_text()
+    assert f"Id: {insight_id}" in memory_body.read_text()
+    assert body in memory_body.read_text()
 
 
 def test_record_insight_rejects_traversal_in_project(fake_vault):

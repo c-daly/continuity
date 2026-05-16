@@ -103,6 +103,8 @@ def test_write_validates_kind_project_and_id(tmp_path):
         provider.write("cont.unknown", "x", {"project": "p"}, "body")
     with pytest.raises(ValueError, match="project"):
         provider.write("cont.insight", "x", {}, "body")
+    with pytest.raises(ValueError, match="project"):
+        provider.write("cont.insight", "x", {"project": "   "}, "body")
     with pytest.raises(ValueError, match="Invalid id"):
         provider.write("cont.insight", "../x", {"project": "p"}, "body")
     with pytest.raises(ValueError, match="Invalid project"):

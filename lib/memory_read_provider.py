@@ -49,15 +49,25 @@ class MemoryReadProvider:
     2. MEMORY_BIN environment variable
     3. ~/.claude/plugins/memory/bin/memory (default install path)
 
+    Vault dir bridging: continuity uses CONTINUITY_VAULT_DIR / VAULT_DIR; the
+    memory CLI reads MEMORY_VAULT_DIR. When MEMORY_VAULT_DIR is not already
+    set in the subprocess env, we bridge from CONTINUITY_VAULT_DIR or VAULT_DIR
+    so both tools target the same vault. An explicit MEMORY_VAULT_DIR wins.
+
     The provider does not raise on memory unavailability — call sites should
     check `available()` first or accept an empty list from `list()`.
     """
 
-    def __init__(self, memory_bin: Optional[Path] = None):
+    def __init__(
+        self,
+        memory_bin: Optional[Path] = None,
+        env: Optional[dict[str, str]] = None,
+    ):
         if memory_bin is None:
             env_bin = os.environ.get("MEMORY_BIN")
             memory_bin = Path(env_bin) if env_bin else _DEFAULT_MEMORY_BIN
         self.memory_bin = Path(memory_bin)
+        self.env = env
 
     def available(self) -> bool:
         """True if the memory binary exists and is executable."""
@@ -85,6 +95,7 @@ class MemoryReadProvider:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
+                env=self._subprocess_env(),
                 text=True,
                 timeout=10,
             )
@@ -95,6 +106,14 @@ class MemoryReadProvider:
             return []
 
         return _parse_list_output(result.stdout)
+
+    def _subprocess_env(self) -> dict[str, str]:
+        env = dict(os.environ if self.env is None else self.env)
+        if "MEMORY_VAULT_DIR" not in env:
+            vault_dir = env.get("CONTINUITY_VAULT_DIR") or env.get("VAULT_DIR")
+            if vault_dir:
+                env["MEMORY_VAULT_DIR"] = vault_dir
+        return env
 
 
 def _parse_list_output(text: str) -> list[MemoryObservation]:

@@ -64,6 +64,16 @@ def test_project_exists_false(fake_vault):
     assert vp.project_exists("no-such-project") is False
 
 
+def test_resolve_project_case_insensitive(fake_vault):
+    (fake_vault / "10-projects" / "CaseProject").mkdir()
+    vp = VaultProvider(vault_path=fake_vault)
+
+    assert vp.project_exists("caseproject") is True
+    assert vp.resolve_project("caseproject") == "CaseProject"
+    assert vp.resolve_project("CASEPROJECT") == "CaseProject"
+    assert vp.resolve_project("no-such-project") is None
+
+
 # --- get_narrative_sections ---
 
 def test_narrative_sections_newest_first(fake_vault):

@@ -150,3 +150,55 @@ def test_env_var_overrides_default(monkeypatch, tmp_path):
     monkeypatch.setenv("MEMORY_BIN", str(custom))
     provider = MemoryReadProvider()
     assert provider.memory_bin == custom
+
+
+# --- MEMORY_VAULT_DIR bridging ---
+
+def test_subprocess_env_bridges_continuity_vault_dir(tmp_path):
+    """CONTINUITY_VAULT_DIR is bridged to MEMORY_VAULT_DIR for the subprocess."""
+    provider = MemoryReadProvider(
+        memory_bin=tmp_path / "fake",
+        env={"CONTINUITY_VAULT_DIR": "/x/vault"},
+    )
+    env = provider._subprocess_env()
+    assert env["MEMORY_VAULT_DIR"] == "/x/vault"
+
+
+def test_subprocess_env_bridges_vault_dir(tmp_path):
+    """VAULT_DIR is bridged to MEMORY_VAULT_DIR when CONTINUITY_VAULT_DIR is unset."""
+    provider = MemoryReadProvider(
+        memory_bin=tmp_path / "fake",
+        env={"VAULT_DIR": "/y/vault"},
+    )
+    env = provider._subprocess_env()
+    assert env["MEMORY_VAULT_DIR"] == "/y/vault"
+
+
+def test_subprocess_env_continuity_vault_dir_wins_over_vault_dir(tmp_path):
+    """CONTINUITY_VAULT_DIR takes precedence over VAULT_DIR."""
+    provider = MemoryReadProvider(
+        memory_bin=tmp_path / "fake",
+        env={"CONTINUITY_VAULT_DIR": "/x/vault", "VAULT_DIR": "/y/vault"},
+    )
+    env = provider._subprocess_env()
+    assert env["MEMORY_VAULT_DIR"] == "/x/vault"
+
+
+def test_subprocess_env_explicit_memory_vault_dir_wins(tmp_path):
+    """An explicitly set MEMORY_VAULT_DIR is not overwritten by the bridge."""
+    provider = MemoryReadProvider(
+        memory_bin=tmp_path / "fake",
+        env={
+            "MEMORY_VAULT_DIR": "/z/vault",
+            "CONTINUITY_VAULT_DIR": "/x/vault",
+        },
+    )
+    env = provider._subprocess_env()
+    assert env["MEMORY_VAULT_DIR"] == "/z/vault"
+
+
+def test_subprocess_env_no_vault_dirs_set(tmp_path):
+    """No MEMORY_VAULT_DIR added when no continuity vault env is set."""
+    provider = MemoryReadProvider(memory_bin=tmp_path / "fake", env={})
+    env = provider._subprocess_env()
+    assert "MEMORY_VAULT_DIR" not in env

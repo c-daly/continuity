@@ -15,12 +15,11 @@ def unavailable_memory(tmp_path):
 
 @pytest.fixture
 def available_memory(tmp_path):
-    """MemoryReadProvider backed by a fake CLI returning three observations.
+    """MemoryReadProvider backed by a fake CLI returning two observations.
 
-    Two are scoped to subject=test-project (so the resume brief will surface
-    them); one is scoped elsewhere (so the subject filter on real memory
-    would exclude it). The fake CLI ignores filter args and returns the
-    same lines regardless, which is fine for this test — we're verifying
+    Both are scoped to subject=test-project (so the resume brief will
+    surface them). The fake CLI ignores filter args and returns the same
+    lines regardless, which is fine for this test — we're verifying
     composition, not memory's own filtering semantics.
     """
     fake_bin = tmp_path / "fake-memory"

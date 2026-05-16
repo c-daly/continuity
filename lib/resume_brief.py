@@ -98,17 +98,16 @@ def resume_brief(
             parts.append(f"- {j['date']} ({j['path']})")
         parts.append("")
 
-    if memory.available():
-        observations = memory.list(subject=project)[:_MEMORY_MAX_PER_SECTION]
-        if observations:
-            parts.append("## Memory observations")
-            for obs in observations:
-                parts.append(f"- **{obs.type}** `{obs.name}` — {obs.description}")
-            parts.append("")
+    observations = memory.list(subject=project)[:_MEMORY_MAX_PER_SECTION]
+    if observations:
+        parts.append("## Memory observations")
+        for obs in observations:
+            parts.append(f"- **{obs.type}** `{obs.name}` — {obs.description}")
+        parts.append("")
 
-            parts.append("## Continuity synthesis")
-            parts.append(_synthesize(observations))
-            parts.append("")
+        parts.append("## Continuity synthesis")
+        parts.append(_synthesize(observations))
+        parts.append("")
 
     if not (narrative_sections or decisions):
         # Project-scoped content is missing. Journal entries (if any)

@@ -133,7 +133,7 @@ def test_list_passes_filter_arguments(tmp_path):
     )
     fake_bin.chmod(0o755)
     provider = MemoryReadProvider(memory_bin=fake_bin)
-    provider.list(type="feedback", subject="demo")
+    provider.list(type_="feedback", subject="demo")
     args = capture.read_text().strip().split()
     assert args == ["list", "--type", "feedback", "--subject", "demo"]
 

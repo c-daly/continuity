@@ -1,9 +1,9 @@
 """Resume-brief composer — v0 of continuity's surfacing capability.
 
 Reads vault content for a project and composes a session-start brief.
-Pure read; no writes. Other read providers (memory, git, gh, ...) will
-be added in later phases when concrete need surfaces — for now, the
-vault is the canonical source.
+Pure read; no writes. Vault content is the canonical source; memory is
+an optional first-order observation source when the memory plugin CLI is
+available.
 """
 
 import sys
@@ -13,6 +13,7 @@ from typing import Optional
 
 # Sibling import — this module sits in lib/ alongside vault_provider.py
 sys.path.insert(0, str(Path(__file__).parent))
+from memory_read_provider import MemoryReadProvider  # noqa: E402
 from vault_provider import VaultProvider  # noqa: E402
 
 
@@ -23,19 +24,26 @@ _DECISIONS_MAX = 5
 _JOURNAL_DAYS_BACK = 3
 
 
-def resume_brief(project: str, vault: Optional[VaultProvider] = None) -> str:
+def resume_brief(
+    project: str,
+    vault: Optional[VaultProvider] = None,
+    memory: Optional[MemoryReadProvider] = None,
+) -> str:
     """Compose a session-start resume brief for `project` from vault content.
 
     Sources:
     - Last 2 H2 sections from `<project>/narrative.md` (latest + previous)
     - Decisions from `<project>/decisions/` in the last 30 days (max 5)
     - Last 3 daily journal entries
+    - First-order memory observations for `project`, if memory is available
 
     Returns markdown text suitable for injection at session start.
     Length is variable but typically 200-600 words depending on content.
     """
     if vault is None:
         vault = VaultProvider()
+    if memory is None:
+        memory = MemoryReadProvider()
 
     if not vault.project_exists(project):
         available = vault.list_projects()
@@ -54,6 +62,7 @@ def resume_brief(project: str, vault: Optional[VaultProvider] = None) -> str:
         project, since=_date_n_days_ago(_DECISIONS_LOOKBACK_DAYS)
     )
     journal = vault.get_journal_entries(days_back=_JOURNAL_DAYS_BACK)
+    memory_observations = memory.list(subject=project)
 
     parts: list[str] = [f"# Resume brief: {project}", ""]
 
@@ -79,6 +88,15 @@ def resume_brief(project: str, vault: Optional[VaultProvider] = None) -> str:
         parts.append(f"## Recent journal entries (last {_JOURNAL_DAYS_BACK} days)")
         for j in journal:
             parts.append(f"- {j['date']} ({j['path']})")
+        parts.append("")
+
+    if memory_observations:
+        parts.append("## Memory observations")
+        for observation in memory_observations:
+            parts.append(
+                f"- `{observation.type}:{observation.subject}` "
+                f"**{observation.name}** — {observation.description}"
+            )
         parts.append("")
 
     if not (narrative_sections or decisions):

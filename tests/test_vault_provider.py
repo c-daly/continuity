@@ -1,8 +1,5 @@
 """Tests for VaultProvider — the vault read provider."""
 
-import os
-from pathlib import Path
-
 import pytest
 
 from vault_provider import VaultProvider
@@ -62,6 +59,15 @@ def test_project_exists_true(fake_vault):
 def test_project_exists_false(fake_vault):
     vp = VaultProvider(vault_path=fake_vault)
     assert vp.project_exists("no-such-project") is False
+
+
+def test_project_exists_case_insensitive(fake_vault):
+    project = fake_vault / "10-projects" / "CaseProject"
+    project.mkdir()
+    vp = VaultProvider(vault_path=fake_vault)
+
+    assert vp.project_exists("caseproject") is True
+    assert vp.resolve_project("caseproject") == "CaseProject"
 
 
 # --- get_narrative_sections ---

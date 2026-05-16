@@ -14,6 +14,22 @@ def test_resume_brief_known_project(fake_vault):
     assert "approach Z" in brief
 
 
+def test_resume_brief_resolves_project_case_insensitively(fake_vault):
+    project = fake_vault / "10-projects" / "Sabhaile"
+    project.mkdir()
+    (project / "narrative.md").write_text(
+        "# Sabhaile Narrative\n\n"
+        "## 2026-05-16 — current state\n\n"
+        "Lowercase cwd should resolve to the canonical project directory.\n"
+    )
+    vp = VaultProvider(vault_path=fake_vault)
+
+    brief = resume_brief("sabhaile", vault=vp, memory=FakeMemoryProvider([]))
+
+    assert "Resume brief: Sabhaile" in brief
+    assert "Lowercase cwd should resolve" in brief
+
+
 def test_resume_brief_includes_recent_decisions(fake_vault):
     vp = VaultProvider(vault_path=fake_vault)
     brief = resume_brief("test-project", vault=vp)

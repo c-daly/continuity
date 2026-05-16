@@ -45,7 +45,8 @@ def resume_brief(
     if memory is None:
         memory = MemoryReadProvider()
 
-    if not vault.project_exists(project):
+    canonical_project = vault.resolve_project(project)
+    if canonical_project is None:
         available = vault.list_projects()
         if available:
             return (
@@ -57,14 +58,14 @@ def resume_brief(
             f"No projects found under {vault.vault_path}/10-projects/."
         )
 
-    narrative_sections = vault.get_narrative_sections(project, last_n=2)
+    narrative_sections = vault.get_narrative_sections(canonical_project, last_n=2)
     decisions = vault.get_decisions(
-        project, since=_date_n_days_ago(_DECISIONS_LOOKBACK_DAYS)
+        canonical_project, since=_date_n_days_ago(_DECISIONS_LOOKBACK_DAYS)
     )
     journal = vault.get_journal_entries(days_back=_JOURNAL_DAYS_BACK)
-    memory_observations = memory.list(subject=project)
+    memory_observations = memory.list(subject=canonical_project)
 
-    parts: list[str] = [f"# Resume brief: {project}", ""]
+    parts: list[str] = [f"# Resume brief: {canonical_project}", ""]
 
     if narrative_sections:
         parts.append("## Most recent narrative")

@@ -115,3 +115,20 @@ def test_resume_brief_includes_memory_when_available(fake_vault, available_memor
     obs_idx = brief.index("## Memory observations")
     syn_idx = brief.index("## Continuity synthesis")
     assert obs_idx < syn_idx
+
+
+def test_resume_brief_memory_counts_as_project_specific_context(fake_vault, tmp_path):
+    fake_bin = tmp_path / "fake-memory"
+    fake_bin.write_text(
+        "#!/bin/sh\n"
+        "echo 'project:empty-project:memory-only — project context from memory'\n"
+    )
+    fake_bin.chmod(0o755)
+    memory = MemoryReadProvider(memory_bin=fake_bin)
+    vp = VaultProvider(vault_path=fake_vault)
+
+    brief = resume_brief("empty-project", vault=vp, memory=memory)
+
+    assert "## Memory observations" in brief
+    assert "memory-only" in brief
+    assert "No project-specific content found" not in brief

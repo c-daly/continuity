@@ -1,8 +1,5 @@
 """Tests for VaultProvider — the vault read provider."""
 
-import os
-from pathlib import Path
-
 import pytest
 
 from vault_provider import VaultProvider

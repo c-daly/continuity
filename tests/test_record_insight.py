@@ -2,7 +2,6 @@
 
 import io
 from datetime import date
-from pathlib import Path
 
 import pytest
 
@@ -90,6 +89,52 @@ def test_cli_record_insight(fake_vault, tmp_path, monkeypatch, capsys):
     assert len(written) == 1
     text = written[0].read_text()
     assert "Body via stdin." in text
+
+
+def test_cli_record_insight_with_memory_provider(tmp_path, monkeypatch, capsys):
+    args_file = tmp_path / "memory-args.txt"
+    stdin_file = tmp_path / "memory-stdin.md"
+    memory_bin = tmp_path / "memory"
+    memory_bin.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$@\" > '{args_file}'\n"
+        f"cat > '{stdin_file}'\n"
+    )
+    memory_bin.chmod(0o755)
+    (tmp_path / "config.yaml").write_text("write_provider: memory\n")
+
+    monkeypatch.setenv("CONTINUITY_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("MEMORY_BIN", str(memory_bin))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "continuity",
+            "record-insight",
+            "--project",
+            "constellation",
+            "--title",
+            "Memory Path",
+        ],
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO("Body via memory provider.\n"))
+
+    rc = cli.main()
+
+    assert rc == 0
+    assert capsys.readouterr().out.strip().startswith("cont.insight:")
+    args = args_file.read_text().splitlines()
+    assert args[:7] == [
+        "write",
+        "--type",
+        "project",
+        "--name",
+        args[4],
+        "--subject",
+        "constellation",
+    ]
+    assert args[-1] == "Second-order continuity insight: Memory Path"
+    assert "Source: continuity" in stdin_file.read_text()
+    assert "Body via memory provider." in stdin_file.read_text()
 
 
 def test_record_insight_rejects_traversal_in_project(fake_vault):

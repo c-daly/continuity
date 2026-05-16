@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from memory_read_provider import (
     MemoryObservation,
     MemoryReadProvider,

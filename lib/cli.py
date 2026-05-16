@@ -45,7 +45,11 @@ def main() -> int:
         return 0
     if args.cmd == "record-insight":
         body = sys.stdin.read()
-        ref = record_insight(project=args.project, title=args.title, body=body)
+        try:
+            ref = record_insight(project=args.project, title=args.title, body=body)
+        except (RuntimeError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         print(ref)
         return 0
     return 1

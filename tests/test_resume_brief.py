@@ -63,6 +63,25 @@ def test_resume_brief_omits_empty_memory_observations(fake_vault):
     assert "Memory observations" not in brief
 
 
+def test_resume_brief_memory_observations_count_as_project_context(fake_vault):
+    vp = VaultProvider(vault_path=fake_vault)
+    memory = FakeMemoryProvider(
+        [
+            MemoryObservation(
+                type="project",
+                subject="empty-project",
+                name="memory-only-context",
+                description="A project-specific memory entry.",
+            )
+        ]
+    )
+
+    brief = resume_brief("empty-project", vault=vp, memory=memory)
+
+    assert "Memory observations" in brief
+    assert "No project-specific content found" not in brief
+
+
 def test_resume_brief_unknown_project_lists_alternatives(fake_vault):
     vp = VaultProvider(vault_path=fake_vault)
     brief = resume_brief("no-such-project", vault=vp)

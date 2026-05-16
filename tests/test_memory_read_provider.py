@@ -123,6 +123,18 @@ def test_memory_cli_failure_returns_empty(tmp_path):
     assert provider.list(subject="constellation") == []
 
 
+def test_memory_cli_timeout_returns_empty(tmp_path):
+    memory_bin = _write_executable(
+        tmp_path / "memory",
+        "#!/bin/sh\n"
+        "sleep 1\n"
+        f"echo '{SAMPLE_LINE}'\n",
+    )
+    provider = MemoryReadProvider(memory_bin=memory_bin, timeout_seconds=0.01)
+
+    assert provider.list(subject="memory-plugin") == []
+
+
 def _write_executable(path: Path, content: str) -> Path:
     path.write_text(content)
     path.chmod(0o755)

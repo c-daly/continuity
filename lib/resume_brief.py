@@ -99,7 +99,7 @@ def resume_brief(
             )
         parts.append("")
 
-    if not (narrative_sections or decisions):
+    if not (narrative_sections or decisions or memory_observations):
         # Project-scoped content is missing. Journal entries (if any)
         # are vault-wide and were already shown above as general context.
         parts.append(

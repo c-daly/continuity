@@ -20,6 +20,7 @@ from typing import Optional
 LOGGER = logging.getLogger(__name__)
 _DEFAULT_MEMORY_BIN = Path.home() / ".claude" / "plugins" / "memory" / "bin" / "memory"
 _DESCRIPTION_SEPARATOR = " — "
+_DEFAULT_TIMEOUT_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -39,9 +40,11 @@ class MemoryReadProvider:
         self,
         memory_bin: Optional[str | Path] = None,
         env: Optional[dict[str, str]] = None,
+        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self.memory_bin = Path(memory_bin) if memory_bin is not None else _DEFAULT_MEMORY_BIN
         self.env = env
+        self.timeout_seconds = timeout_seconds
 
     def available(self) -> bool:
         """Return true when the memory CLI exists at the configured path."""
@@ -70,7 +73,11 @@ class MemoryReadProvider:
                 env=self._subprocess_env(),
                 text=True,
                 check=False,
+                timeout=self.timeout_seconds,
             )
+        except subprocess.TimeoutExpired:
+            LOGGER.warning("memory list timed out after %.1f seconds", self.timeout_seconds)
+            return []
         except OSError as exc:
             LOGGER.warning("memory list failed to start: %s", exc)
             return []

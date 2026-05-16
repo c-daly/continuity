@@ -1,0 +1,5 @@
+project:memory-plugin:memory-plugin-mcp-verified-2026-05-13 — Memory plugin MCP server verified operational on 2026-05-13 via memory_write from an active Claude Code session.
+feedback:agent-swarm:use-feature-branches — Substantive work goes on feature/... branches, not direct to main. One per repo when multi-repo. User decides merge timing.
+project:constellation:constellation-plan-pm-ownership-drift — Plan items 7.4/8.3/8.4 phrase PM as continuity-owned; Continuity.md says PM is peer plugin. Unresolved 2026-05-16.
+user:vault:wraps-multi-host-recap-blocks — Backfill detects wrapped `## Auto-Recap (HOST)` blocks; remove unwrapped top-of-file duplicates when deduping.
+reference:agent-swarm:pr-97-caller-id-routing — agent-swarm PR #97 (b979dfa) establishes main-agent caller-id routing; follow-ups CC1, CC2 still open.

@@ -1,63 +1,76 @@
 # continuity
 
-Cross-project surfacing and meta-concerns curation for Claude Code.
+Cross-project surfacing and second-order synthesis for Claude Code.
 
-A reader/surfacer plugin that composes information from providers (vault, memory, git, gh, ...) to answer queries like "what's the state of project X?" and proactively surface what's likely to be needed (resume briefs, recent decisions, cross-cutting patterns). Also curates meta concerns (cross-project feedback, principles, patterns) that don't fit any single project.
+continuity composes information from providers (vault, memory, git, ...) to answer "what's the state of project X?" and proactively surface what's likely to be needed (resume briefs, recent decisions, second-order insights). It's the synthesis layer over memory's first-order observations and the vault's narrative content.
 
 ## Status
 
-Design phase, with Phase 0 implementation in progress on `feature/phase-0`.
+Phase 0, Phase 1, T1 (`MemoryReadProvider`), and T2 (`MemoryWriteProvider`) shipped. Resume briefs include memory-observation sections; `record-insight` can write `cont.insight` artifacts through memory when configured (opt-in).
+
+See `<vault>/10-projects/continuity/narrative.md` for the dated chronological state and the constellation v2 plan (`<vault>/10-projects/constellation/2026-05-16-implementation-plan-v2.md`) for the cross-plugin execution context.
 
 ## Architecture
 
-Continuity is one plugin in a constellation:
+continuity is one plugin in a constellation. Per the v2 operating model:
+
+| Plugin | Owns |
+|---|---|
+| memory | first-order durable observations; memory read/write/index policy |
+| **continuity** | **second-order synthesis over memory and other providers; resume briefs; surfacing; patterns** |
+| pm | project/task lifecycle |
+| experiment | run/eval records, scorecards |
+| Comhairle | role/model composition |
+| agent-swarm | workflow execution |
+| vault-cli | terminal capture, harvest, recap |
+
+continuity is the *synthesis* layer. Memory holds first-order observations (`user`/`feedback`/`project`/`reference`). continuity composes, surfaces, interprets, and detects patterns across them. The distinction matters: continuity *writes synthesized artifacts* (insights, briefs), not raw observations.
+
+## Surface
+
+**CLI** (via `bin/continuity`):
 
 ```
-Consumers       (continuity, model directly, future tools)
-   ↓
-Read providers  (vault, memory, git, gh, ...)
-   ↓
-Memory          (schema-aware service; substrate-agnostic)
-   ↓
-Substrate       (vault-substrate, filesystem-substrate, ...)
-   ↓
-Storage         (Obsidian vault, ~/notes, ... — plain text)
+continuity resume-brief <project>             # session-start orientation brief for <project>
+continuity record-insight --project P --title T   # write a project-scoped insight (body from stdin)
 ```
 
-Continuity owns:
-- **Composers** — read provider results into views (resume briefs, status, recap)
-- **Surfacing** — proactive raising of likely-needed information
-- **Meta concerns** — cross-cutting feedback, principles, patterns (its native write schemas)
+**MCP** (via `bin/continuity-server`, FastMCP):
 
-Continuity does NOT own:
-- Memory storage (memory plugin)
-- Project elements like lifecycle/intake/triage (pm plugin)
-- Experimentation tooling (experiment plugin)
-- Workflow execution (agent-swarm plugin)
-- Terminal vault interaction (vault-cli)
+- `resume_brief(project)` — composes narrative (last 2 H2 sections), decisions (30d), journal entries (3d), memory observations + a `## Continuity synthesis` count line
+- `record_insight(project, title, body)` — writes a `cont.insight` artifact via the configured `WriteProvider`
 
-## Plans
+## Configuration
 
-Design and build plans live in `.claude/plans/`. The current actionable plan is the 2026-05-05 build plan, snapshot in `<vault>/10-projects/continuity/2026-05-05-build-plan.md`.
+Vault path: `$CONTINUITY_VAULT_DIR` or `$VAULT_DIR` (resume-brief subprocesses also bridge to `$MEMORY_VAULT_DIR`).
 
-## Phase 0
+Write provider (for `record-insight`): `~/.config/continuity/config.yaml`:
 
-Three components, ~210 lines total:
-1. `vault` read provider — knows PARA layout
-2. `continuity v0` resume-brief composer — reads vault, composes brief
-3. agent-swarm SessionStart hook integration — calls continuity at session start
+```yaml
+write_provider: vault     # default — writes <vault>/10-projects/<project>/insights/<id>.md
+# OR
+write_provider: memory    # opt-in — writes via memory's bin/memory write (subject = project)
+```
 
-Phase 0 ships value with no memory plugin needed. The vault is the canonical source; vault-cli (or its successor) handles harvesting external state into vault.
+The memory write path is **opt-in by design** (per the constellation v2 plan's non-goal: "Do not make memory the only write path"). Vault-direct writes produce `type: insight` files visible to vault search but not indexed in memory's `MEMORY.md`. Memory writes produce `type: project` entries (with `cont.insight` provenance in the body) that *are* indexed.
+
+## Read providers
+
+- **`VaultProvider`** (`lib/vault_provider.py`) — reads PARA layout, narratives, decisions, journal
+- **`MemoryReadProvider`** (`lib/memory_read_provider.py`) — calls `bin/memory list` from the local memory plugin install; degrades gracefully if memory is unavailable
+
+## Write providers
+
+- **`VaultWriteProvider`** (`lib/vault_write_provider.py`) — writes directly to PARA paths under `<vault>/10-projects/<project>/insights/`; the v1 default
+- **`MemoryWriteProvider`** (`lib/memory_write_provider.py`) — bridges through `bin/memory write` with deterministic id-as-name mapping; opt-in via config
 
 ## Runtime dependencies
 
-continuity's MCP server uses the [mcp](https://pypi.org/project/mcp/) Python package (FastMCP). The package is installed into a plugin-local virtual environment at `.venv/`, not into the host Python, so the plugin doesn't pollute system site-packages.
+continuity's MCP server uses the [mcp](https://pypi.org/project/mcp/) Python package (FastMCP). Installed into a plugin-local `.venv/`.
 
 ### First-run setup
 
-If `uv` (https://docs.astral.sh/uv/) is on PATH, `bin/continuity-server` and `bin/continuity` auto-bootstrap `.venv` on first invocation. No manual steps required.
-
-If `uv` is unavailable, create the venv manually:
+If `uv` is on `PATH`, `bin/continuity-server` auto-bootstraps `.venv`. Otherwise:
 
 ```
 cd ~/.claude/plugins/continuity
@@ -65,4 +78,26 @@ python3 -m venv .venv
 .venv/bin/pip install mcp 'pyyaml>=6.0'
 ```
 
-The CLI (`bin/continuity resume-brief <project>`) and the MCP server (`bin/continuity-server`) both use the same venv. The CLI surface has no `mcp` runtime dependency itself, but reuses the venv for consistency.
+The CLI (`bin/continuity ...`) and MCP server share the same venv.
+
+## Layout
+
+```
+.claude-plugin/plugin.json   # Claude Code plugin manifest
+.mcp.json                    # MCP server registration (uses ${CONTINUITY_ROOT})
+bin/continuity               # CLI wrapper
+bin/continuity-server        # MCP server wrapper
+lib/cli.py                   # CLI subcommands
+lib/server.py                # MCP server (FastMCP)
+lib/resume_brief.py          # resume-brief composer (vault + memory)
+lib/record_insight.py        # insight write workflow
+lib/vault_provider.py        # vault read provider (PARA)
+lib/vault_write_provider.py  # vault direct write provider (default)
+lib/memory_read_provider.py  # memory CLI-backed read provider (T1)
+lib/memory_write_provider.py # memory CLI-backed write provider (T2; opt-in)
+lib/write_provider.py        # WriteProvider ABC
+lib/config.py                # config resolution + provider selection
+tests/                       # pytest (~106 tests)
+```
+
+Plans and decisions live in `<vault>/10-projects/continuity/`.

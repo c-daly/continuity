@@ -51,3 +51,15 @@ def test_explicit_memory_selection():
 def test_unknown_provider_raises():
     with pytest.raises(ValueError, match="Unknown write_provider"):
         get_write_provider({"write_provider": "magic"})
+
+
+def test_memory_provider_selected_from_config_file(tmp_path, monkeypatch):
+    # File-driven selection: writing write_provider:memory into the config
+    # dir and calling get_write_provider() with NO arg must route through
+    # load_config() and yield a MemoryWriteProvider. Guards the
+    # file-read-to-dispatch chain that global activation depends on
+    # (an empty config dir would default to vault, so this is not a tautology).
+    _isolate_config(monkeypatch, tmp_path)
+    (tmp_path / "config.yaml").write_text("write_provider: memory\n")
+    wp = get_write_provider()
+    assert isinstance(wp, MemoryWriteProvider)

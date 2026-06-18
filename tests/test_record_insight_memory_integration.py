@@ -37,6 +37,13 @@ def test_record_insight_through_memory_roundtrips(tmp_path):
     assert got.returncode == 0, got.stderr
     assert "Source: continuity" in got.stdout
 
+    # The entry physically landed in the entity's local .memory/ directory (audit-#6 placement).
+    # The memory plugin writes <vault>/10-projects/<subject>/.memory/<date>-<name>.md.
+    memdir = vault / "10-projects" / "demo-proj" / ".memory"
+    placed = list(memdir.glob("*.md"))
+    assert placed, f"no entry written under entity .memory/: {memdir}"
+    assert any(name in p.name for p in placed), f"{name} not among {[p.name for p in placed]}"
+
 
 @pytest.mark.skipif(not MEMORY_BIN.is_file(), reason="memory plugin not installed")
 def test_unknown_project_entity_is_rejected(tmp_path):

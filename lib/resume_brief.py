@@ -1,8 +1,10 @@
 """Resume-brief composer — v0 of continuity's surfacing capability.
 
 Reads vault content for a project and composes a session-start brief.
-Pure read; no writes. Other read providers (git, gh, ...) will be added
-in later phases when concrete need surfaces.
+Read-mostly: the only write is updating continuity's relevance index
+(`record_surfaced`) to track which memory entries were surfaced, which
+feeds the recency/frequency scoring of future briefs. Other read
+providers (git, gh, ...) will be added in later phases.
 
 As of constellation v2 T1 (2026-05-16), an optional MemoryReadProvider
 is wired in: when memory is available, first-order observations are

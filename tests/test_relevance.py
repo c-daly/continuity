@@ -54,6 +54,14 @@ def test_load_missing_index_is_empty(tmp_path):
     assert load_index(tmp_path / "relevance.json") == {}
 
 
+def test_load_malformed_index_is_empty(tmp_path):
+    p = tmp_path / "relevance.json"
+    p.write_text("[1, 2, 3]")
+    assert load_index(p) == {}
+    p.write_text("\"just a string\"")
+    assert load_index(p) == {}
+
+
 def test_record_surfaced_bumps_freq_and_last_seen(tmp_path):
     p = tmp_path / "relevance.json"
     record_surfaced(["a", "b"], path=p, today=date(2026, 6, 30))
@@ -79,3 +87,12 @@ def test_rank_orders_by_score_desc(tmp_path):
     ranked = rank(obs, {}, today)
     assert ranked[-1].name == "2026-05-01-old"
     assert set(o.name for o in ranked[:2]) == {"2026-05-01-pref", "2026-06-29-fresh"}
+
+
+def test_rank_uses_index_freq_to_break_ties(tmp_path):
+    today = date(2026, 6, 30)
+    a = MemoryObservation("project", "p", "2026-06-01-a", "d")
+    b = MemoryObservation("project", "p", "2026-06-01-b", "d")
+    index = {"2026-06-01-b": {"last_seen": "2026-06-29", "freq": 10}}
+    ranked = rank([a, b], index, today)
+    assert ranked[0].name == "2026-06-01-b"

@@ -13,7 +13,7 @@ unaffected.
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +21,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 from memory_read_provider import MemoryObservation, MemoryReadProvider  # noqa: E402
 from vault_provider import VaultProvider  # noqa: E402
+from relevance import load_index, rank, record_surfaced  # noqa: E402
 
 
 _NARRATIVE_LATEST_TRUNCATE = 1500
@@ -99,15 +100,18 @@ def resume_brief(
             parts.append(f"- {j['date']} ({j['path']})")
         parts.append("")
 
-    observations = memory.list(subject=canonical_project)[:_MEMORY_MAX_PER_SECTION]
+    observations = memory.list(subject=canonical_project)
     if observations:
+        ranked = rank(observations, load_index(), date.today())[:_MEMORY_MAX_PER_SECTION]
+        record_surfaced([o.name for o in ranked])
+
         parts.append("## Memory observations")
-        for obs in observations:
+        for obs in ranked:
             parts.append(f"- **{obs.type}** `{obs.name}` — {obs.description}")
         parts.append("")
 
         parts.append("## Continuity synthesis")
-        parts.append(_synthesize(observations))
+        parts.append(_synthesize(ranked))
         parts.append("")
 
     if not (narrative_sections or decisions or observations):

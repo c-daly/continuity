@@ -132,3 +132,25 @@ def test_resume_brief_memory_counts_as_project_specific_context(fake_vault, tmp_
     assert "## Memory observations" in brief
     assert "memory-only" in brief
     assert "No project-specific content found" not in brief
+
+
+def test_memory_section_is_scored_and_budgeted(fake_vault, tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTINUITY_CONFIG_DIR", str(tmp_path))
+    fake_bin = tmp_path / "fake-memory"
+    fake_bin.write_text(
+        "#!/bin/sh\n"
+        "echo 'project:test-project:2026-01-01-ancient — old episodic'\n"
+        "echo 'feedback:test-project:2026-06-18-pref — durable preference'\n"
+    )
+    fake_bin.chmod(0o755)
+    vp = VaultProvider(vault_path=fake_vault)
+    mem = MemoryReadProvider(memory_bin=fake_bin)
+
+    brief = resume_brief("test-project", vault=vp, memory=mem)
+
+    # Durable/recent feedback ranks above the ancient episodic project entry.
+    assert brief.index("2026-06-18-pref") < brief.index("2026-01-01-ancient")
+    # Surfacing was recorded to the (isolated) index.
+    import json
+    idx = json.loads((tmp_path / "relevance.json").read_text())
+    assert idx["2026-06-18-pref"]["freq"] == 1

@@ -9,6 +9,19 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_continuity_config(tmp_path, monkeypatch):
+    """Isolate CONTINUITY_CONFIG_DIR for every test.
+
+    resume_brief now calls relevance.record_surfaced(), which writes the
+    relevance index. Without isolation, tests that exercise available
+    memory pollute the real ~/.config/continuity/relevance.json. Tests
+    that set CONTINUITY_CONFIG_DIR themselves override this autouse
+    default (monkeypatch.setenv is last-write-wins per test).
+    """
+    monkeypatch.setenv("CONTINUITY_CONFIG_DIR", str(tmp_path / "continuity-config"))
+
+
 @pytest.fixture
 def fake_vault(tmp_path):
     """Create a minimal vault structure for testing.

@@ -43,8 +43,8 @@ def resume_brief(
     - Last 2 H2 sections from `<project>/narrative.md` (latest + previous)
     - Decisions from `<project>/decisions/` in the last 30 days (max 5)
     - Last 3 daily journal entries
-    - If a memory provider is available, first-order memory observations
-      with subject=`project` (raw entries; capped at 10) plus a short
+    - If a memory provider is available, score-ranked memory observations
+      with subject=`project` (top 10 by relevance) plus a short
       continuity-synthesis line summarizing what's there.
 
     Returns markdown text suitable for injection at session start.

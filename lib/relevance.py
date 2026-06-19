@@ -7,10 +7,13 @@ Pure scoring is here; persistence + ranking + wiring follow.
 """
 from __future__ import annotations
 
+import json
 import math
+import os
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from memory_read_provider import MemoryObservation  # noqa: E402
@@ -45,3 +48,48 @@ def score(obs: MemoryObservation, freq: int, today: date) -> float:
     half_life = HALF_LIFE_BY_TYPE.get(obs.type, _DEFAULT_HALF_LIFE)
     recency = math.exp(-_age_days(obs.name, today) / half_life)
     return recency + _FREQ_WEIGHT * freq
+
+
+def index_path() -> Path:
+    """Relevance index location, honoring CONTINUITY_CONFIG_DIR (test isolation)."""
+    base = os.environ.get("CONTINUITY_CONFIG_DIR")
+    root = Path(base) if base else Path.home() / ".config" / "continuity"
+    return root / "relevance.json"
+
+
+def load_index(path: Optional[Path] = None) -> dict[str, dict]:
+    """Load the relevance index, or {} if absent / unreadable / malformed."""
+    p = path or index_path()
+    try:
+        loaded = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def record_surfaced(
+    names,
+    path: Optional[Path] = None,
+    today: Optional[date] = None,
+) -> None:
+    """Bump freq + set last_seen for each surfaced entry name (atomic write)."""
+    p = path or index_path()
+    when = (today or date.today()).isoformat()
+    idx = load_index(p)
+    for name in names:
+        entry = idx.get(name, {"last_seen": when, "freq": 0})
+        entry["last_seen"] = when
+        entry["freq"] = int(entry.get("freq", 0)) + 1
+        idx[name] = entry
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(idx, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def rank(observations, index: dict, today: date) -> list[MemoryObservation]:
+    """Return observations sorted by effective score, descending (stable)."""
+    def _key(obs: MemoryObservation) -> float:
+        freq = int(index.get(obs.name, {}).get("freq", 0))
+        return score(obs, freq, today)
+    return sorted(observations, key=_key, reverse=True)

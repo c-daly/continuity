@@ -96,3 +96,30 @@ def test_rank_uses_index_freq_to_break_ties(tmp_path):
     index = {"2026-06-01-b": {"last_seen": "2026-06-29", "freq": 10}}
     ranked = rank([a, b], index, today)
     assert ranked[0].name == "2026-06-01-b"
+
+
+def test_record_surfaced_swallows_write_errors(tmp_path):
+    # Parent is a regular file, so mkdir/write fail with OSError — which must be
+    # swallowed (bookkeeping can never abort the caller, e.g. resume_brief).
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x")
+    record_surfaced(["a"], path=blocker / "relevance.json", today=date(2026, 6, 30))
+
+
+def test_record_surfaced_resets_nondict_entry(tmp_path):
+    p = tmp_path / "relevance.json"
+    p.write_text('{"x": "not-a-dict"}')  # corrupted/hand-edited entry value
+    record_surfaced(["x"], path=p, today=date(2026, 6, 30))
+    assert load_index(p)["x"] == {"last_seen": "2026-06-30", "freq": 1}
+
+
+def test_record_surfaced_empty_names_is_noop(tmp_path):
+    p = tmp_path / "relevance.json"
+    record_surfaced([], path=p, today=date(2026, 6, 30))
+    assert not p.exists()
+
+
+def test_rank_tolerates_nondict_index_entry(tmp_path):
+    a = MemoryObservation("project", "p", "2026-06-01-a", "d")
+    ranked = rank([a], {"2026-06-01-a": "garbage"}, date(2026, 6, 30))
+    assert ranked == [a]  # non-dict entry -> freq 0, no crash

@@ -67,29 +67,45 @@ def load_index(path: Optional[Path] = None) -> dict[str, dict]:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def _safe_freq(entry) -> int:
+    """freq from an index entry, tolerant of corrupted / non-dict / non-int values."""
+    if not isinstance(entry, dict):
+        return 0
+    try:
+        return int(entry.get("freq", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def record_surfaced(
-    names,
+    names: list[str],
     path: Optional[Path] = None,
     today: Optional[date] = None,
 ) -> None:
-    """Bump freq + set last_seen for each surfaced entry name (atomic write)."""
+    """Bump freq + set last_seen for each surfaced entry name (atomic write).
+
+    Best-effort bookkeeping: malformed existing entries are reset, empty
+    `names` is a no-op, and any I/O failure is swallowed so a write error
+    can never abort the caller (e.g. the resume brief).
+    """
+    if not names:
+        return
     p = path or index_path()
     when = (today or date.today()).isoformat()
     idx = load_index(p)
     for name in names:
-        entry = idx.get(name, {"last_seen": when, "freq": 0})
-        entry["last_seen"] = when
-        entry["freq"] = int(entry.get("freq", 0)) + 1
-        idx[name] = entry
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(idx, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, p)
+        idx[name] = {"last_seen": when, "freq": _safe_freq(idx.get(name)) + 1}
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(idx, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, p)
+    except OSError:
+        return  # non-critical bookkeeping must never crash the caller
 
 
 def rank(observations, index: dict, today: date) -> list[MemoryObservation]:
     """Return observations sorted by effective score, descending (stable)."""
     def _key(obs: MemoryObservation) -> float:
-        freq = int(index.get(obs.name, {}).get("freq", 0))
-        return score(obs, freq, today)
+        return score(obs, _safe_freq(index.get(obs.name)), today)
     return sorted(observations, key=_key, reverse=True)

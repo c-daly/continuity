@@ -7,7 +7,10 @@ import pytest
 from memory_write_provider import MemoryWriteProvider
 from record_insight import record_insight
 
-MEMORY_BIN = Path.home() / ".claude" / "plugins" / "memory" / "bin" / "memory"
+MEMORY_BIN = Path(
+    os.environ.get("MEMORY_BIN")
+    or (Path.home() / ".claude" / "plugins" / "memory" / "bin" / "memory")
+)
 
 
 def _make_vault_with_entity(root: Path, project: str) -> Path:
@@ -32,7 +35,7 @@ def test_record_insight_through_memory_roundtrips(tmp_path):
     name = ref.split(":", 1)[1]
     got = subprocess.run(
         [str(MEMORY_BIN), "get", "--name", name, "--type", "project"],
-        capture_output=True, text=True, env=env, timeout=10,
+        capture_output=True, text=True, env=provider._subprocess_env(), timeout=10,
     )
     assert got.returncode == 0, got.stderr
     assert "Source: continuity" in got.stdout

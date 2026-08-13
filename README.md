@@ -85,6 +85,8 @@ The CLI (`bin/continuity ...`) and MCP server share the same venv.
 ```
 .claude-plugin/plugin.json   # Claude Code plugin manifest
 .mcp.json                    # MCP server registration (uses ${CONTINUITY_ROOT})
+hooks/hooks.json             # Claude Code hook registration (SessionEnd)
+hooks/session-end.py         # write-on-end reminder to record_insight
 bin/continuity               # CLI wrapper
 bin/continuity-server        # MCP server wrapper
 lib/cli.py                   # CLI subcommands

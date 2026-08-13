@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Tests for hooks/session-end.py — continuity's write-on-end reminder.
+"""Tests for hooks/session-end.py — continuity's write-on-end trigger.
 
-continuity's own write-on-end mechanism (per CLAUDE.md): a SessionEnd
-hook that reminds the agent to record a project-scoped insight before
-the session closes, so cross-session narrative survives without relying
-on the manual "Task completion protocol" stopgap.
+The hook is a thin trigger: it reads session signals and delegates to
+lib/session_capture.session_end_capture. These tests assert the delegation and
+robustness; the message contents themselves are covered in test_session_capture.
 """
 
 import importlib.util
@@ -22,32 +21,29 @@ def _load_session_end(name="continuity_session_end_mod"):
     return mod
 
 
-def test_write_on_end_message_points_at_continuity_record_insight():
-    # The reminder must direct the agent at continuity's own record_insight
-    # tool (MCP) so the write lands in continuity's substrate, not elsewhere.
+def test_hook_delegates_to_session_end_capture(monkeypatch, capsys):
     mod = _load_session_end()
-    msg = mod.build_write_on_end_message()
-    assert "mcp__plugin_continuity_continuity__record_insight" in msg
-    assert "record_insight" in msg
-
-
-def test_main_emits_valid_system_message_json(monkeypatch, capsys):
-    # main() must emit a single JSON object carrying the reminder as a
-    # systemMessage, and must not crash on empty/absent stdin.
-    mod = _load_session_end()
-    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    signals = {"cwd": "/home/x/projects/vault/10-projects/agent-swarm"}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(signals)))
     mod.main()
-    out = capsys.readouterr().out.strip()
-    payload = json.loads(out)
+    payload = json.loads(capsys.readouterr().out.strip())
     assert "systemMessage" in payload
+    # capture logic ran (record_insight guidance) and the cwd signal flowed through
+    assert "record_insight" in payload["systemMessage"]
+    assert "agent-swarm" in payload["systemMessage"]
+
+
+def test_hook_tolerates_malformed_stdin(monkeypatch, capsys):
+    mod = _load_session_end()
+    monkeypatch.setattr("sys.stdin", io.StringIO("not json{{"))
+    mod.main()
+    payload = json.loads(capsys.readouterr().out.strip())
     assert "record_insight" in payload["systemMessage"]
 
 
-def test_main_tolerates_malformed_stdin(monkeypatch, capsys):
-    # A hook that dies on malformed input would break session teardown;
-    # main() must degrade to still emitting the reminder.
+def test_hook_tolerates_non_dict_stdin(monkeypatch, capsys):
     mod = _load_session_end()
-    monkeypatch.setattr("sys.stdin", io.StringIO("not json{{"))
+    monkeypatch.setattr("sys.stdin", io.StringIO("[1, 2, 3]"))
     mod.main()
     payload = json.loads(capsys.readouterr().out.strip())
     assert "record_insight" in payload["systemMessage"]

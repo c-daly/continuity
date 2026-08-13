@@ -93,6 +93,7 @@ lib/cli.py                   # CLI subcommands
 lib/server.py                # MCP server (FastMCP)
 lib/resume_brief.py          # resume-brief composer (vault + memory)
 lib/record_insight.py        # insight write workflow
+lib/session_capture.py       # session-end capture logic (called by the hook)
 lib/vault_provider.py        # vault read provider (PARA)
 lib/vault_write_provider.py  # vault direct write provider (default)
 lib/memory_read_provider.py  # memory CLI-backed read provider (T1)

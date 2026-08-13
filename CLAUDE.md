@@ -42,7 +42,9 @@ See `<vault>/10-projects/continuity/narrative.md` for the dated chronological st
 
 ## Task completion protocol
 
-> *Stopgap until continuity provides a write-on-end mechanism for itself.*
+> *The SessionEnd hook (`hooks/session-end.py`) now surfaces a write-on-end
+> reminder to `record_insight` at session close. These steps remain the manual
+> fallback until the hook also performs the narrative append + vault sync.*
 
 Trigger: when the user signals stopping or before a clean session end.
 

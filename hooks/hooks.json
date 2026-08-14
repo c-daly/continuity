@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CONTINUITY_ROOT}/hooks/session-end.py",
+            "command": "python3 \"${CONTINUITY_ROOT}/hooks/session-end.py\"",
             "timeout": 10
           }
         ]

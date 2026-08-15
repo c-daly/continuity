@@ -126,7 +126,7 @@ class VaultWriteProvider(WriteProvider):
     def exists(self, kind: str, id: str) -> bool:
         if kind == _PROMOTION_KIND:
             validate_basename(id, "id")
-            return any(self.vault_path.rglob(f"{_PROMOTION_SUBDIR}/{id}.md"))
+            return any((d / f"{id}.md").exists() for d in self.vault_path.rglob(_PROMOTION_SUBDIR) if d.is_dir())
         if kind not in _KIND_TO_SUBDIR:
             raise ValueError(f"Unknown kind: {kind!r}")
         validate_basename(id, "id")
@@ -135,7 +135,7 @@ class VaultWriteProvider(WriteProvider):
         if not projects_root.is_dir():
             return False
         # Project not knowable from (kind, id) alone — scan project subtrees.
-        return any(projects_root.glob(f"*/{subdir}/{id}.md"))
+        return any((d / f"{id}.md").exists() for d in projects_root.glob(f"*/{subdir}") if d.is_dir())
 
     def _resolve(self, kind: str, id: str, project: str) -> Path:
         if kind not in _KIND_TO_SUBDIR:

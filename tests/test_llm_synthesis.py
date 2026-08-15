@@ -46,3 +46,18 @@ def test_drafter_maps_json_to_draft():
                           "consolidates": True, "justification": "j"})
     d = LLMDrafter(FakeRunner(payload)).draft(Cluster("c", [_obs("a", "x")]), "10-projects")
     assert d.title == "Verify First" and d.consolidates is True
+
+
+class _TimeoutRunner:
+    def complete(self, prompt):
+        import subprocess
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=1)
+
+
+def test_clusterer_tolerates_runner_timeout():
+    assert LLMClusterer(_TimeoutRunner()).cluster([_obs("a", "x")], []) == []
+
+
+def test_drafter_tolerates_runner_timeout():
+    d = LLMDrafter(_TimeoutRunner()).draft(Cluster("c", [_obs("a", "x")]), "s")
+    assert d.consolidates is False

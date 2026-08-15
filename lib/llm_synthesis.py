@@ -57,7 +57,7 @@ class LLMClusterer(Clusterer):
                 if members:
                     out.append(Cluster(concept=str(c.get("concept", "")).strip(), members=members))
             return out
-        except (ValueError, RuntimeError, AttributeError, TypeError):
+        except (ValueError, RuntimeError, AttributeError, TypeError, OSError, subprocess.SubprocessError):
             return []
 
 
@@ -78,7 +78,7 @@ class LLMDrafter(Drafter):
                 consolidates=bool(data.get("consolidates", False)),
                 justification=str(data.get("justification", "")).strip(),
             )
-        except (ValueError, RuntimeError, AttributeError, TypeError):
+        except (ValueError, RuntimeError, AttributeError, TypeError, OSError, subprocess.SubprocessError):
             return PromotionDraft(title=cluster.concept, statement="", consolidates=False,
                                   justification="draft failed")
 

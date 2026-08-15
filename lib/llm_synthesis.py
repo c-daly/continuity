@@ -13,7 +13,7 @@ from typing import Optional, Protocol
 
 sys.path.insert(0, str(Path(__file__).parent))
 from memory_read_provider import MemoryObservation  # noqa: E402
-from promotion import Cluster, PromotionDraft, Clusterer, Drafter, Promotion  # noqa: E402
+from promotion import Cluster, PromotionDraft, Clusterer, Drafter  # noqa: E402
 
 
 class LLMRunner(Protocol):
@@ -51,14 +51,14 @@ class LLMClusterer(Clusterer):
         )
         try:
             data = json.loads(self.runner.complete(prompt))
-        except (ValueError, RuntimeError):
+            out = []
+            for c in data.get("clusters", []) or []:
+                members = [by_name[n] for n in (c.get("members", []) or []) if n in by_name]
+                if members:
+                    out.append(Cluster(concept=str(c.get("concept", "")).strip(), members=members))
+            return out
+        except (ValueError, RuntimeError, AttributeError, TypeError):
             return []
-        out = []
-        for c in data.get("clusters", []):
-            members = [by_name[n] for n in c.get("members", []) if n in by_name]
-            if members:
-                out.append(Cluster(concept=str(c.get("concept", "")).strip(), members=members))
-        return out
 
 
 class LLMDrafter(Drafter):
@@ -72,15 +72,15 @@ class LLMDrafter(Drafter):
         )
         try:
             data = json.loads(self.runner.complete(prompt))
-        except (ValueError, RuntimeError):
+            return PromotionDraft(
+                title=str(data.get("title", cluster.concept)).strip(),
+                statement=str(data.get("statement", "")).strip(),
+                consolidates=bool(data.get("consolidates", False)),
+                justification=str(data.get("justification", "")).strip(),
+            )
+        except (ValueError, RuntimeError, AttributeError, TypeError):
             return PromotionDraft(title=cluster.concept, statement="", consolidates=False,
                                   justification="draft failed")
-        return PromotionDraft(
-            title=str(data.get("title", cluster.concept)).strip(),
-            statement=str(data.get("statement", "")).strip(),
-            consolidates=bool(data.get("consolidates", False)),
-            justification=str(data.get("justification", "")).strip(),
-        )
 
 
 _CLUSTER_PROMPT = """You are continuity's synthesis step. Below are first-order memory

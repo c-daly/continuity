@@ -31,6 +31,16 @@ def test_clusterer_drops_unknown_member_names():
 def test_clusterer_tolerates_garbage_json():
     assert LLMClusterer(FakeRunner("not json")).cluster([_obs("a", "x")], []) == []
 
+def test_clusterer_tolerates_wrong_shaped_json():
+    obs = [_obs("LOGOS", "l1")]
+    for payload in ("null", "[]", '{"clusters": null}', '{"clusters": [{"concept": "c", "members": 5}]}'):
+        assert LLMClusterer(FakeRunner(payload)).cluster(obs, []) == []
+
+
+def test_drafter_tolerates_wrong_shaped_json():
+    d = LLMDrafter(FakeRunner("null")).draft(Cluster("c", [_obs("a", "x")]), "s")
+    assert d.consolidates is False
+
 def test_drafter_maps_json_to_draft():
     payload = json.dumps({"title": "Verify First", "statement": "S",
                           "consolidates": True, "justification": "j"})

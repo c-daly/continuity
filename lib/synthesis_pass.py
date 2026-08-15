@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -32,3 +33,47 @@ def already_covered(cluster: Cluster, existing: list[Promotion]) -> bool:
         if names and srcs and (names <= srcs or srcs <= names):
             return True
     return False
+
+
+@dataclass
+class SynthesisResult:
+    written: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+
+
+def run_synthesis(reader, writer, store, clusterer: Clusterer, drafter: Drafter,
+                  vault_path: Path, today: Optional[date] = None) -> SynthesisResult:
+    when = (today or date.today()).isoformat()
+    observations = reader.list()
+    result = SynthesisResult()
+    if not observations:
+        return result
+
+    existing = store.list()
+    clusters = clusterer.cluster(observations, existing)
+
+    for cluster in clusters:
+        if not is_cross_boundary(cluster):
+            result.skipped.append(cluster.concept)
+            continue
+        if already_covered(cluster, existing):
+            result.skipped.append(cluster.concept)
+            continue
+        scope = resolve_scope([m.subject for m in cluster.members], vault_path)
+        if scope is None:                       # no member subject resolves -> abstain
+            result.skipped.append(cluster.concept)
+            continue
+        draft = drafter.draft(cluster, scope)
+        if not draft.consolidates:
+            result.skipped.append(cluster.concept)
+            continue
+        pid = promotion_id(cluster.concept)
+        promo = Promotion(
+            id=pid, scope=scope, title=draft.title, statement=draft.statement,
+            sources=[SourceRef(m.name, m.subject) for m in cluster.members],
+            instances=len(cluster.members), created_at=when,
+        )
+        writer.write("cont.promotion", pid, promotion_to_frontmatter(promo), draft.statement)
+        result.written.append(pid)
+
+    return result

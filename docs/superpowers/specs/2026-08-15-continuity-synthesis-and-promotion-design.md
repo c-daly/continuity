@@ -99,6 +99,7 @@ Conservative on purpose; all tunable.
 - On-the-fly flagger (hot-path recognition writing candidate flags for the later pass).
 - Embedding index + semantic clustering (a *scale* optimization so the pass need not LLM-scan the whole corpus each run; at ~700-1k entries the LLM pass is feasible without it).
 - Surfacing polish (promotions land where the brief already reads; deeper brief integration later).
+- **Refinement** — writing a *superseding* promotion when a promoted cluster gains new instances. The `supersedes`/`superseded_by` fields exist but v1 never writes a supersession; the gate treats a grown (nested) cluster as already-covered and no-ops. *(Definition/Pipeline above list "Refine" under v1; moved to slice 2 during implementation to keep v1 provably convergent — convergence is the load-bearing invariant and is honored.)*
 
 ## Resolved decisions
 

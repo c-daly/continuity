@@ -94,21 +94,24 @@ class PromotionStore:
     def list(self) -> list[Promotion]:
         out: list[Promotion] = []
         for f in self.vault_path.rglob("promotions/*.md"):
-            fm = self._frontmatter(f)
-            if fm.get("kind") != "promotion" or fm.get("superseded_by"):
-                continue
-            out.append(Promotion(
-                id=f.stem,
-                scope=str(fm.get("scope", "")),
-                title=str(fm.get("title", "")),
-                statement="",
-                sources=[SourceRef(s.get("name", ""), s.get("scope", ""))
-                         for s in fm.get("sources", []) if isinstance(s, dict)],
-                instances=int(fm.get("instances", 0)),
-                created_at=str(fm.get("created_at", "")),
-                supersedes=fm.get("supersedes"),
-                superseded_by=fm.get("superseded_by"),
-            ))
+            try:
+                fm = self._frontmatter(f)
+                if fm.get("kind") != "promotion" or fm.get("superseded_by"):
+                    continue
+                out.append(Promotion(
+                    id=f.stem,
+                    scope=str(fm.get("scope", "")),
+                    title=str(fm.get("title", "")),
+                    statement="",
+                    sources=[SourceRef(s.get("name", ""), s.get("scope", ""))
+                             for s in (fm.get("sources") or []) if isinstance(s, dict)],
+                    instances=int(fm.get("instances", 0) or 0),
+                    created_at=str(fm.get("created_at", "")),
+                    supersedes=fm.get("supersedes"),
+                    superseded_by=fm.get("superseded_by"),
+                ))
+            except (OSError, ValueError, TypeError, yaml.YAMLError):
+                continue  # a single bad file must never crash the vault-wide list
         return out
 
     @staticmethod

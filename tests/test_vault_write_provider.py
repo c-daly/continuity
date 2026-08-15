@@ -236,3 +236,61 @@ def test_write_does_not_escape_vault_root(fake_vault, tmp_path):
     with pytest.raises(ValueError):
         wp.write("cont.insight", "outside", {"project": ".."}, "x")
     assert not sentinel_outside.exists()
+
+# --- promotions (scope-driven) ---
+
+
+def test_promotion_writes_at_project_scope(fake_vault):
+    (fake_vault / "10-projects" / "LOGOS").mkdir(parents=True)
+    w = VaultWriteProvider(vault_path=fake_vault)
+    w.write(
+        "cont.promotion",
+        "concept-x",
+        {"scope": "10-projects/LOGOS", "kind": "promotion"},
+        "body",
+    )
+    assert (fake_vault / "10-projects/LOGOS/promotions/concept-x.md").is_file()
+
+
+def test_promotion_writes_at_root_scope(fake_vault):
+    w = VaultWriteProvider(vault_path=fake_vault)
+    w.write(
+        "cont.promotion",
+        "concept-y",
+        {"scope": "", "kind": "promotion"},
+        "body",
+    )
+    assert (fake_vault / "promotions/concept-y.md").is_file()
+
+
+def test_promotion_creates_missing_scope_dirs(fake_vault):
+    w = VaultWriteProvider(vault_path=fake_vault)
+    w.write(
+        "cont.promotion",
+        "z",
+        {"scope": "10-projects/New", "kind": "promotion"},
+        "b",
+    )
+    assert (fake_vault / "10-projects/New/promotions/z.md").is_file()
+
+
+def test_promotion_rejects_traversal_scope(fake_vault):
+    w = VaultWriteProvider(vault_path=fake_vault)
+    with pytest.raises(ValueError):
+        w.write(
+            "cont.promotion",
+            "z",
+            {"scope": "../evil", "kind": "promotion"},
+            "b",
+        )
+
+
+def test_promotion_rejects_traversal_id(fake_vault):
+    w = VaultWriteProvider(vault_path=fake_vault)
+    with pytest.raises(ValueError):
+        w.write(
+            "cont.promotion",
+            "../evil",
+            {"scope": "", "kind": "promotion"},
+            "b",
+        )

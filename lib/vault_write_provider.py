@@ -28,6 +28,9 @@ _KIND_TO_SUBDIR = {
     "cont.decision": "decisions",
 }
 
+_PROMOTION_KIND = "cont.promotion"
+_PROMOTION_SUBDIR = "promotions"
+
 _FORBIDDEN_BASENAMES = {"", ".", ".."}
 _FORBIDDEN_BASENAME_CHARS = ("/", "\\", "\x00")
 
@@ -86,12 +89,15 @@ class VaultWriteProvider(WriteProvider):
         frontmatter: dict[str, Any],
         body: str,
     ) -> None:
-        project = frontmatter.get("project")
-        if not project:
-            raise ValueError(
-                f"VaultWriteProvider requires 'project' in frontmatter for kind {kind!r}"
-            )
-        target = self._resolve(kind, id, str(project))
+        if kind == _PROMOTION_KIND:
+            target = self._resolve_promotion(id, str(frontmatter.get("scope", "")))
+        else:
+            project = frontmatter.get("project")
+            if not project:
+                raise ValueError(
+                    f"VaultWriteProvider requires 'project' in frontmatter for kind {kind!r}"
+                )
+            target = self._resolve(kind, id, str(project))
         target.parent.mkdir(parents=True, exist_ok=True)
 
         rendered = self._render(frontmatter, body)
@@ -118,6 +124,9 @@ class VaultWriteProvider(WriteProvider):
             raise
 
     def exists(self, kind: str, id: str) -> bool:
+        if kind == _PROMOTION_KIND:
+            validate_basename(id, "id")
+            return any(self.vault_path.rglob(f"{_PROMOTION_SUBDIR}/{id}.md"))
         if kind not in _KIND_TO_SUBDIR:
             raise ValueError(f"Unknown kind: {kind!r}")
         validate_basename(id, "id")
@@ -139,6 +148,15 @@ class VaultWriteProvider(WriteProvider):
         subdir = _KIND_TO_SUBDIR[kind]
         return self.vault_path / "10-projects" / project / subdir / f"{id}.md"
 
+
+    def _resolve_promotion(self, id: str, scope: str) -> Path:
+        validate_basename(id, "id")
+        base = self.vault_path
+        if scope:
+            for seg in scope.split("/"):
+                validate_basename(seg, "scope segment")
+                base = base / seg
+        return base / _PROMOTION_SUBDIR / f"{id}.md"
     @staticmethod
     def _render(frontmatter: dict[str, Any], body: str) -> str:
         fm_yaml = yaml.safe_dump(

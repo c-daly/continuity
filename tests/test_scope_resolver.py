@@ -39,3 +39,20 @@ def test_resolve_scope_spans_user_is_root(tmp_path):
 def test_resolve_scope_unlocatable_subject_ignored(tmp_path):
     # unknown subjects do not drag scope to root; they are dropped
     assert resolve_scope(["LOGOS", "nope"], _vault(tmp_path)) == "10-projects/LOGOS"
+
+def test_resolve_scope_all_unlocatable_is_none(tmp_path):
+    assert resolve_scope(["nope", "ghost"], _vault(tmp_path)) is None
+
+
+def test_resolve_scope_no_projects_dir_is_none(tmp_path):
+    assert resolve_scope(["LOGOS"], tmp_path) is None
+
+
+def test_resolve_scope_three_subjects(tmp_path):
+    v = _vault(tmp_path)
+    (v / "10-projects" / "LOGOS" / "hermes").mkdir(parents=True, exist_ok=True)
+    assert resolve_scope(["LOGOS", "sophia", "hermes"], v) == "10-projects/LOGOS"
+
+
+def test_subject_with_glob_metachar_is_literal(tmp_path):
+    assert subject_to_relpath("a*b", _vault(tmp_path)) is None

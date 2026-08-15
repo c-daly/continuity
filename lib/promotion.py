@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sys
+import yaml
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,3 +83,39 @@ def promotion_to_frontmatter(p: Promotion) -> dict:
         "supersedes": p.supersedes,
         "superseded_by": p.superseded_by,
     }
+
+
+class PromotionStore:
+    """Reads live (non-superseded) promotions across the whole vault."""
+
+    def __init__(self, vault_path: Path):
+        self.vault_path = Path(vault_path)
+
+    def list(self) -> list[Promotion]:
+        out: list[Promotion] = []
+        for f in self.vault_path.rglob("promotions/*.md"):
+            fm = self._frontmatter(f)
+            if fm.get("kind") != "promotion" or fm.get("superseded_by"):
+                continue
+            out.append(Promotion(
+                id=f.stem,
+                scope=str(fm.get("scope", "")),
+                title=str(fm.get("title", "")),
+                statement="",
+                sources=[SourceRef(s.get("name", ""), s.get("scope", ""))
+                         for s in fm.get("sources", []) if isinstance(s, dict)],
+                instances=int(fm.get("instances", 0)),
+                created_at=str(fm.get("created_at", "")),
+                supersedes=fm.get("supersedes"),
+                superseded_by=fm.get("superseded_by"),
+            ))
+        return out
+
+    @staticmethod
+    def _frontmatter(path: Path) -> dict:
+        text = path.read_text(encoding="utf-8")
+        m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+        if not m:
+            return {}
+        loaded = yaml.safe_load(m.group(1))
+        return loaded if isinstance(loaded, dict) else {}

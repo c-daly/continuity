@@ -85,3 +85,29 @@ def test_memory_is_never_written(tmp_path):
     obs = [_obs("LOGOS", "l1"), _obs("agent-swarm", "a1")]
     _run(v, obs, [Cluster("c", obs)])
     assert not list(v.rglob(".memory/*"))
+
+def test_two_nested_clusters_in_one_pass_no_double_write(tmp_path):
+    v = _vault(tmp_path)
+    obs = [_obs("LOGOS", "l1"), _obs("agent-swarm", "a1")]
+    grown = obs + [_obs("user", "u1")]
+    res = _run(v, grown, [Cluster("dup-concept", obs), Cluster("dup-concept", grown)])
+    assert res.written == ["dup-concept"]
+
+
+class _ExplodingDrafter(Drafter):
+    def draft(self, cluster, scope):
+        if cluster.concept == "boom":
+            raise RuntimeError("draft failed")
+        return PromotionDraft(title=cluster.concept, statement="s", consolidates=True, justification="j")
+
+
+def test_pass_continues_when_a_cluster_errors(tmp_path):
+    v = _vault(tmp_path)
+    ok = [_obs("LOGOS", "o1"), _obs("agent-swarm", "o2")]
+    boom = [_obs("LOGOS", "x1"), _obs("agent-swarm", "x2")]
+    res = run_synthesis(
+        reader=FakeReader(ok + boom), writer=VaultWriteProvider(vault_path=v),
+        store=PromotionStore(v), clusterer=FakeClusterer([Cluster("boom", boom), Cluster("good", ok)]),
+        drafter=_ExplodingDrafter(), vault_path=v, today=date(2026, 8, 15))
+    assert "boom" in res.skipped
+    assert res.written == ["good"]

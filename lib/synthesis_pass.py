@@ -53,27 +53,32 @@ def run_synthesis(reader, writer, store, clusterer: Clusterer, drafter: Drafter,
     clusters = clusterer.cluster(observations, existing)
 
     for cluster in clusters:
-        if not is_cross_boundary(cluster):
+        try:
+            if not is_cross_boundary(cluster):
+                result.skipped.append(cluster.concept)
+                continue
+            if already_covered(cluster, existing):
+                result.skipped.append(cluster.concept)
+                continue
+            scope = resolve_scope([m.subject for m in cluster.members], vault_path)
+            if scope is None:
+                result.skipped.append(cluster.concept)
+                continue
+            draft = drafter.draft(cluster, scope)
+            if not draft.consolidates:
+                result.skipped.append(cluster.concept)
+                continue
+            pid = promotion_id(cluster.concept)
+            promo = Promotion(
+                id=pid, scope=scope, title=draft.title, statement=draft.statement,
+                sources=[SourceRef(m.name, m.subject) for m in cluster.members],
+                instances=len(cluster.members), created_at=when,
+            )
+            writer.write("cont.promotion", pid, promotion_to_frontmatter(promo), draft.statement)
+            result.written.append(pid)
+            existing.append(promo)   # intra-pass convergence: later clusters see this write
+        except Exception:            # best-effort: one bad cluster never aborts the pass
             result.skipped.append(cluster.concept)
             continue
-        if already_covered(cluster, existing):
-            result.skipped.append(cluster.concept)
-            continue
-        scope = resolve_scope([m.subject for m in cluster.members], vault_path)
-        if scope is None:                       # no member subject resolves -> abstain
-            result.skipped.append(cluster.concept)
-            continue
-        draft = drafter.draft(cluster, scope)
-        if not draft.consolidates:
-            result.skipped.append(cluster.concept)
-            continue
-        pid = promotion_id(cluster.concept)
-        promo = Promotion(
-            id=pid, scope=scope, title=draft.title, statement=draft.statement,
-            sources=[SourceRef(m.name, m.subject) for m in cluster.members],
-            instances=len(cluster.members), created_at=when,
-        )
-        writer.write("cont.promotion", pid, promotion_to_frontmatter(promo), draft.statement)
-        result.written.append(pid)
 
     return result

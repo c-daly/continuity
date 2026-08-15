@@ -44,3 +44,9 @@ def test_distinct_overlap_not_covered():
                           sources=[SourceRef("1", "LOGOS"), SourceRef("2", "agent-swarm")],
                           instances=2, created_at="2026-08-15")]
     assert not already_covered(c, existing)
+
+def test_empty_sources_promotion_covers_nothing():
+    c = Cluster("x", [_obs("LOGOS", "1"), _obs("agent-swarm", "2")])
+    existing = [Promotion(id="p", scope="", title="", statement="",
+                          sources=[], instances=0, created_at="2026-08-15")]
+    assert not already_covered(c, existing)

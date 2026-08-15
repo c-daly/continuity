@@ -294,3 +294,11 @@ def test_promotion_rejects_traversal_id(fake_vault):
             {"scope": "", "kind": "promotion"},
             "b",
         )
+
+def test_exists_promotion_id_matches_literally_not_as_glob(fake_vault):
+    (fake_vault).mkdir(parents=True, exist_ok=True)
+    w = VaultWriteProvider(vault_path=fake_vault)
+    w.write("cont.promotion", "aXb", {"scope": "", "kind": "promotion"}, "b")
+    assert w.exists("cont.promotion", "aXb") is True
+    assert w.exists("cont.promotion", "a*b") is False   # "*" must not glob-match aXb
+

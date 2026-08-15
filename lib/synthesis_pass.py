@@ -7,10 +7,8 @@ from pathlib import Path
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from promotion import (Cluster, Promotion, SourceRef, PromotionDraft, PromotionStore,
-                       Clusterer, Drafter, promotion_id, promotion_to_frontmatter)  # noqa: E402
-from memory_read_provider import MemoryReadProvider  # noqa: E402
-from vault_write_provider import VaultWriteProvider  # noqa: E402
+from promotion import (Cluster, Promotion, SourceRef, Clusterer, Drafter,
+                       promotion_id, promotion_to_frontmatter)  # noqa: E402
 from scope_resolver import resolve_scope  # noqa: E402
 
 MIN_INSTANCES = 2
@@ -31,6 +29,6 @@ def already_covered(cluster: Cluster, existing: list[Promotion]) -> bool:
     names = {m.name for m in cluster.members}
     for p in existing:
         srcs = {s.name for s in p.sources}
-        if names <= srcs or srcs <= names:
+        if names and srcs and (names <= srcs or srcs <= names):
             return True
     return False

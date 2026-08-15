@@ -20,20 +20,20 @@ def subject_to_relpath(subject: str, vault_path: Path) -> Optional[str]:
     if not projects.is_dir():
         return None
     # Exact directory named <subject>, searched within 10-projects (may nest).
-    for cand in projects.rglob(subject):
+    for cand in sorted(projects.rglob("*")):
         if cand.is_dir() and cand.name == subject:
             return cand.relative_to(vault_path).as_posix()
     return None
 
 
-def resolve_scope(subjects: list[str], vault_path: Path) -> str:
+def resolve_scope(subjects: list[str], vault_path: Path) -> Optional[str]:
     paths = []
     for s in subjects:
         rel = subject_to_relpath(s, vault_path)
         if rel is not None:
             paths.append(rel.split("/") if rel else [])
     if not paths:
-        return ""
+        return None
     common: list[str] = []
     for parts in zip(*paths):
         if len(set(parts)) == 1:

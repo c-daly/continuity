@@ -45,7 +45,7 @@
 - Test: `tests/test_scope_resolver.py`
 
 **Interfaces:**
-- Produces: `subject_to_relpath(subject: str, vault_path: Path) -> Optional[str]` (vault-relative POSIX dir path, `""` for user/root, `None` if unlocatable); `resolve_scope(subjects: list[str], vault_path: Path) -> str` (longest common directory prefix; `""` = vault root).
+- Produces: `subject_to_relpath(subject: str, vault_path: Path) -> Optional[str]` (vault-relative POSIX dir path, `""` for user/root, `None` if unlocatable); `resolve_scope(subjects: list[str], vault_path: Path) -> Optional[str]` (longest common directory prefix; `""` = vault root; `None` when NO subject resolves — abstain, never a lazy root-dump).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -92,6 +92,22 @@ def test_resolve_scope_spans_user_is_root(tmp_path):
 def test_resolve_scope_unlocatable_subject_ignored(tmp_path):
     # unknown subjects do not drag scope to root; they are dropped
     assert resolve_scope(["LOGOS", "nope"], _vault(tmp_path)) == "10-projects/LOGOS"
+
+def test_resolve_scope_all_unlocatable_is_none(tmp_path):
+    # NO subject resolves -> abstain (None), never a lazy root-dump
+    assert resolve_scope(["nope", "ghost"], _vault(tmp_path)) is None
+
+def test_resolve_scope_no_projects_dir_is_none(tmp_path):
+    assert resolve_scope(["LOGOS"], tmp_path) is None  # empty vault, no 10-projects/
+
+def test_resolve_scope_three_subjects(tmp_path):
+    v = _vault(tmp_path)
+    (v / "10-projects" / "LOGOS" / "hermes").mkdir(parents=True, exist_ok=True)
+    assert resolve_scope(["LOGOS", "sophia", "hermes"], v) == "10-projects/LOGOS"
+
+def test_subject_with_glob_metachar_is_literal(tmp_path):
+    # a subject containing glob metacharacters must not be treated as a pattern
+    assert subject_to_relpath("a*b", _vault(tmp_path)) is None
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -107,7 +123,8 @@ Expected: FAIL (`ModuleNotFoundError: scope_resolver`).
 Maps a memory entry's `subject` to its vault-relative entity directory and
 computes the least-general (tightest) scope that subsumes a set of subjects,
 as the longest common directory prefix. `""` denotes the vault root (user
-scope). Unlocatable subjects are dropped, never resolved to root.
+scope). Unlocatable subjects are dropped, never resolved to root. When NO
+subject resolves, resolve_scope returns None (abstain) rather than root.
 """
 from __future__ import annotations
 
@@ -123,21 +140,23 @@ def subject_to_relpath(subject: str, vault_path: Path) -> Optional[str]:
     projects = vault_path / "10-projects"
     if not projects.is_dir():
         return None
-    # Exact directory named <subject>, searched within 10-projects (may nest).
-    for cand in projects.rglob(subject):
+    # Exact directory named <subject> within 10-projects (may nest). glob("*") +
+    # name-equality (not rglob(subject)) so a subject containing glob metacharacters
+    # is matched literally, not as a pattern; sorted() makes the pick deterministic.
+    for cand in sorted(projects.rglob("*")):
         if cand.is_dir() and cand.name == subject:
             return cand.relative_to(vault_path).as_posix()
     return None
 
 
-def resolve_scope(subjects: list[str], vault_path: Path) -> str:
+def resolve_scope(subjects: list[str], vault_path: Path) -> Optional[str]:
     paths = []
     for s in subjects:
         rel = subject_to_relpath(s, vault_path)
         if rel is not None:
             paths.append(rel.split("/") if rel else [])
     if not paths:
-        return ""
+        return None  # nothing resolved -> abstain; never a lazy root-dump
     common: list[str] = []
     for parts in zip(*paths):
         if len(set(parts)) == 1:
@@ -256,7 +275,8 @@ Also extend `exists()` so a promotion is recognized (needed by later idempotence
 ```python
         if kind == _PROMOTION_KIND:
             validate_basename(id, "id")
-            return any(self.vault_path.rglob(f"{_PROMOTION_SUBDIR}/{id}.md"))
+            return any((d / f"{id}.md").exists()
+                       for d in self.vault_path.rglob(_PROMOTION_SUBDIR) if d.is_dir())
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -318,8 +338,12 @@ def test_frontmatter_roundtrips_core_fields():
     fm = promotion_to_frontmatter(p)
     assert fm["kind"] == "promotion"
     assert fm["scope"] == "10-projects/LOGOS"
+    assert fm["title"] == "T"
     assert fm["instances"] == 2
-    assert {s["name"] for s in fm["sources"]} == {"n1", "n2"}
+    assert fm["created_at"] == "2026-08-15"
+    assert fm["supersedes"] is None
+    assert fm["superseded_by"] is None
+    assert fm["sources"] == [{"name": "n1", "scope": "LOGOS"}, {"name": "n2", "scope": "sophia"}]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -341,7 +365,7 @@ from __future__ import annotations
 import re
 import sys
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -465,6 +489,21 @@ def test_store_lists_live_promotions_only(tmp_path):
     _write(tmp_path, dead)
     ids = {p.id for p in PromotionStore(tmp_path).list()}
     assert ids == {"a"}
+
+
+def test_store_skips_malformed_yaml(tmp_path):
+    (tmp_path / "promotions").mkdir(parents=True)
+    (tmp_path / "promotions" / "broken.md").write_text("---\nkind: promotion\nsources: [\n---\n\nbody\n")
+    assert PromotionStore(tmp_path).list() == []          # broken YAML skipped, no crash
+
+
+def test_store_survives_corrupt_file_and_lists_good(tmp_path):
+    (tmp_path / "10-projects" / "LOGOS").mkdir(parents=True)
+    _write(tmp_path, Promotion(id="g", scope="10-projects/LOGOS", title="G", statement="s",
+                               sources=[SourceRef("n", "LOGOS")], instances=2, created_at="2026-08-15"))
+    (tmp_path / "promotions").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "promotions" / "bad.md").write_text("---\nkind: promotion\nsources: null\ninstances: many\n---\n\nb\n")
+    assert {p.id for p in PromotionStore(tmp_path).list()} == {"g"}   # good listed, corrupt skipped
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -479,7 +518,10 @@ import yaml  # add to imports at top of promotion.py
 
 
 class PromotionStore:
-    """Reads live (non-superseded) promotions across the whole vault."""
+    """Reads live (non-superseded) promotions across the whole vault.
+
+    Tolerant: any file that fails to read/parse/convert is skipped, never
+    crashing the vault-wide list (the settling pass relies on list())."""
 
     def __init__(self, vault_path: Path):
         self.vault_path = Path(vault_path)
@@ -487,21 +529,24 @@ class PromotionStore:
     def list(self) -> list["Promotion"]:
         out: list[Promotion] = []
         for f in self.vault_path.rglob("promotions/*.md"):
-            fm = self._frontmatter(f)
-            if fm.get("kind") != "promotion" or fm.get("superseded_by"):
-                continue
-            out.append(Promotion(
-                id=f.stem,
-                scope=str(fm.get("scope", "")),
-                title=str(fm.get("title", "")),
-                statement="",
-                sources=[SourceRef(s.get("name", ""), s.get("scope", ""))
-                         for s in fm.get("sources", []) if isinstance(s, dict)],
-                instances=int(fm.get("instances", 0)),
-                created_at=str(fm.get("created_at", "")),
-                supersedes=fm.get("supersedes"),
-                superseded_by=fm.get("superseded_by"),
-            ))
+            try:
+                fm = self._frontmatter(f)
+                if fm.get("kind") != "promotion" or fm.get("superseded_by"):
+                    continue
+                out.append(Promotion(
+                    id=f.stem,
+                    scope=str(fm.get("scope", "")),
+                    title=str(fm.get("title", "")),
+                    statement="",
+                    sources=[SourceRef(s.get("name", ""), s.get("scope", ""))
+                             for s in (fm.get("sources") or []) if isinstance(s, dict)],
+                    instances=int(fm.get("instances", 0) or 0),
+                    created_at=str(fm.get("created_at", "")),
+                    supersedes=fm.get("supersedes"),
+                    superseded_by=fm.get("superseded_by"),
+                ))
+            except (OSError, ValueError, TypeError, yaml.YAMLError):
+                continue  # a single bad file must never crash the vault-wide list
         return out
 
     @staticmethod
@@ -587,6 +632,14 @@ def test_distinct_overlap_not_covered():
                           sources=[SourceRef("1", "LOGOS"), SourceRef("2", "agent-swarm")],
                           instances=2, created_at="2026-08-15")]
     assert not already_covered(c, existing)
+
+def test_empty_sources_promotion_covers_nothing():
+    # a promotion with empty sources (e.g. from a corrupt sources:null file) must
+    # NOT report every cluster as covered — that would shut off promotion vault-wide
+    c = Cluster("x", [_obs("LOGOS", "1"), _obs("agent-swarm", "2")])
+    existing = [Promotion(id="p", scope="", title="", statement="",
+                          sources=[], instances=0, created_at="2026-08-15")]
+    assert not already_covered(c, existing)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -606,10 +659,8 @@ from pathlib import Path
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from promotion import (Cluster, Promotion, SourceRef, PromotionDraft, PromotionStore,
-                       Clusterer, Drafter, promotion_id, promotion_to_frontmatter)  # noqa: E402
-from memory_read_provider import MemoryReadProvider  # noqa: E402
-from vault_write_provider import VaultWriteProvider  # noqa: E402
+from promotion import (Cluster, Promotion, SourceRef, Clusterer, Drafter,
+                       promotion_id, promotion_to_frontmatter)  # noqa: E402
 from scope_resolver import resolve_scope  # noqa: E402
 
 MIN_INSTANCES = 2
@@ -630,7 +681,7 @@ def already_covered(cluster: Cluster, existing: list[Promotion]) -> bool:
     names = {m.name for m in cluster.members}
     for p in existing:
         srcs = {s.name for s in p.sources}
-        if names <= srcs or srcs <= names:
+        if names and srcs and (names <= srcs or srcs <= names):
             return True
     return False
 ```
@@ -750,6 +801,35 @@ def test_memory_is_never_written(tmp_path):
     obs = [_obs("LOGOS", "l1"), _obs("agent-swarm", "a1")]
     _run(v, obs, [Cluster("c", obs)])
     assert not list(v.rglob(".memory/*"))
+
+
+def test_two_nested_clusters_in_one_pass_no_double_write(tmp_path):
+    # two clusters from ONE clusterer() call, nested with each other -> the second
+    # is covered by the first's intra-pass write, so it is not written again
+    v = _vault(tmp_path)
+    obs = [_obs("LOGOS", "l1"), _obs("agent-swarm", "a1")]
+    grown = obs + [_obs("user", "u1")]
+    res = _run(v, grown, [Cluster("dup-concept", obs), Cluster("dup-concept", grown)])
+    assert res.written == ["dup-concept"]
+
+
+class _ExplodingDrafter(Drafter):
+    def draft(self, cluster, scope):
+        if cluster.concept == "boom":
+            raise RuntimeError("draft failed")
+        return PromotionDraft(title=cluster.concept, statement="s", consolidates=True, justification="j")
+
+
+def test_pass_continues_when_a_cluster_errors(tmp_path):
+    v = _vault(tmp_path)
+    ok = [_obs("LOGOS", "o1"), _obs("agent-swarm", "o2")]
+    boom = [_obs("LOGOS", "x1"), _obs("agent-swarm", "x2")]
+    res = run_synthesis(
+        reader=FakeReader(ok + boom), writer=VaultWriteProvider(vault_path=v),
+        store=PromotionStore(v), clusterer=FakeClusterer([Cluster("boom", boom), Cluster("good", ok)]),
+        drafter=_ExplodingDrafter(), vault_path=v, today=date(2026, 8, 15))
+    assert "boom" in res.skipped        # errored cluster skipped, pass not aborted
+    assert res.written == ["good"]      # the other cluster still processed
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -781,25 +861,33 @@ def run_synthesis(reader, writer, store, clusterer: Clusterer, drafter: Drafter,
     clusters = clusterer.cluster(observations, existing)
 
     for cluster in clusters:
-        if not is_cross_boundary(cluster):
+        try:
+            if not is_cross_boundary(cluster):
+                result.skipped.append(cluster.concept)
+                continue
+            if already_covered(cluster, existing):
+                result.skipped.append(cluster.concept)
+                continue
+            scope = resolve_scope([m.subject for m in cluster.members], vault_path)
+            if scope is None:                       # no member subject resolves -> abstain
+                result.skipped.append(cluster.concept)
+                continue
+            draft = drafter.draft(cluster, scope)
+            if not draft.consolidates:
+                result.skipped.append(cluster.concept)
+                continue
+            pid = promotion_id(cluster.concept)
+            promo = Promotion(
+                id=pid, scope=scope, title=draft.title, statement=draft.statement,
+                sources=[SourceRef(m.name, m.subject) for m in cluster.members],
+                instances=len(cluster.members), created_at=when,
+            )
+            writer.write("cont.promotion", pid, promotion_to_frontmatter(promo), draft.statement)
+            result.written.append(pid)
+            existing.append(promo)   # intra-pass convergence: later clusters see this write
+        except Exception:            # best-effort: one bad cluster never aborts the pass
             result.skipped.append(cluster.concept)
             continue
-        if already_covered(cluster, existing):
-            result.skipped.append(cluster.concept)
-            continue
-        scope = resolve_scope([m.subject for m in cluster.members], vault_path)
-        draft = drafter.draft(cluster, scope)
-        if not draft.consolidates:
-            result.skipped.append(cluster.concept)
-            continue
-        pid = promotion_id(cluster.concept)
-        promo = Promotion(
-            id=pid, scope=scope, title=draft.title, statement=draft.statement,
-            sources=[SourceRef(m.name, m.subject) for m in cluster.members],
-            instances=len(cluster.members), created_at=when,
-        )
-        writer.write("cont.promotion", pid, promotion_to_frontmatter(promo), draft.statement)
-        result.written.append(pid)
 
     return result
 ```
@@ -869,6 +957,30 @@ def test_clusterer_drops_unknown_member_names():
 def test_clusterer_tolerates_garbage_json():
     assert LLMClusterer(FakeRunner("not json")).cluster([_obs("a", "x")], []) == []
 
+def test_clusterer_tolerates_wrong_shaped_json():
+    obs = [_obs("LOGOS", "l1")]
+    for payload in ("null", "[]", '{"clusters": null}', '{"clusters": [{"concept": "c", "members": 5}]}'):
+        assert LLMClusterer(FakeRunner(payload)).cluster(obs, []) == []
+
+def test_drafter_tolerates_wrong_shaped_json():
+    d = LLMDrafter(FakeRunner("null")).draft(Cluster("c", [_obs("a", "x")]), "s")
+    assert d.consolidates is False
+
+
+class _TimeoutRunner:
+    def complete(self, prompt):
+        import subprocess
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=1)
+
+
+def test_clusterer_tolerates_runner_timeout():
+    assert LLMClusterer(_TimeoutRunner()).cluster([_obs("a", "x")], []) == []
+
+
+def test_drafter_tolerates_runner_timeout():
+    d = LLMDrafter(_TimeoutRunner()).draft(Cluster("c", [_obs("a", "x")]), "s")
+    assert d.consolidates is False
+
 def test_drafter_maps_json_to_draft():
     payload = json.dumps({"title": "Verify First", "statement": "S",
                           "consolidates": True, "justification": "j"})
@@ -899,7 +1011,7 @@ from typing import Optional, Protocol
 
 sys.path.insert(0, str(Path(__file__).parent))
 from memory_read_provider import MemoryObservation  # noqa: E402
-from promotion import Cluster, PromotionDraft, Clusterer, Drafter, Promotion  # noqa: E402
+from promotion import Cluster, PromotionDraft, Clusterer, Drafter  # noqa: E402
 
 
 class LLMRunner(Protocol):
@@ -937,14 +1049,14 @@ class LLMClusterer(Clusterer):
         )
         try:
             data = json.loads(self.runner.complete(prompt))
-        except (ValueError, RuntimeError):
-            return []
-        out = []
-        for c in data.get("clusters", []):
-            members = [by_name[n] for n in c.get("members", []) if n in by_name]
-            if members:
-                out.append(Cluster(concept=str(c.get("concept", "")).strip(), members=members))
-        return out
+            out = []
+            for c in data.get("clusters", []) or []:
+                members = [by_name[n] for n in (c.get("members", []) or []) if n in by_name]
+                if members:
+                    out.append(Cluster(concept=str(c.get("concept", "")).strip(), members=members))
+            return out
+        except (ValueError, RuntimeError, AttributeError, TypeError, OSError, subprocess.SubprocessError):
+            return []   # any malformed / wrong-shaped LLM output -> no clusters (never raise)
 
 
 class LLMDrafter(Drafter):
@@ -958,15 +1070,15 @@ class LLMDrafter(Drafter):
         )
         try:
             data = json.loads(self.runner.complete(prompt))
-        except (ValueError, RuntimeError):
+            return PromotionDraft(
+                title=str(data.get("title", cluster.concept)).strip(),
+                statement=str(data.get("statement", "")).strip(),
+                consolidates=bool(data.get("consolidates", False)),
+                justification=str(data.get("justification", "")).strip(),
+            )
+        except (ValueError, RuntimeError, AttributeError, TypeError, OSError, subprocess.SubprocessError):
             return PromotionDraft(title=cluster.concept, statement="", consolidates=False,
                                   justification="draft failed")
-        return PromotionDraft(
-            title=str(data.get("title", cluster.concept)).strip(),
-            statement=str(data.get("statement", "")).strip(),
-            consolidates=bool(data.get("consolidates", False)),
-            justification=str(data.get("justification", "")).strip(),
-        )
 
 
 _CLUSTER_PROMPT = """You are continuity's synthesis step. Below are first-order memory

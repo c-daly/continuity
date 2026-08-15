@@ -23,5 +23,9 @@ def test_frontmatter_roundtrips_core_fields():
     fm = promotion_to_frontmatter(p)
     assert fm["kind"] == "promotion"
     assert fm["scope"] == "10-projects/LOGOS"
+    assert fm["title"] == "T"
     assert fm["instances"] == 2
-    assert {s["name"] for s in fm["sources"]} == {"n1", "n2"}
+    assert fm["created_at"] == "2026-08-15"
+    assert fm["supersedes"] is None
+    assert fm["superseded_by"] is None
+    assert fm["sources"] == [{"name": "n1", "scope": "LOGOS"}, {"name": "n2", "scope": "sophia"}]

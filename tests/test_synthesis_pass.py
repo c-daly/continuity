@@ -111,3 +111,14 @@ def test_pass_continues_when_a_cluster_errors(tmp_path):
         drafter=_ExplodingDrafter(), vault_path=v, today=date(2026, 8, 15))
     assert "boom" in res.skipped
     assert res.written == ["good"]
+
+
+def test_pid_collision_disambiguated_no_overwrite(tmp_path):
+    # two DISTINCT concepts (non-nested member sets) slugging to the same pid must
+    # NOT overwrite each other -> both written with distinct ids, both files on disk
+    v = _vault(tmp_path)
+    obs1 = [_obs("LOGOS", "a1"), _obs("agent-swarm", "a2")]
+    obs2 = [_obs("LOGOS", "b1"), _obs("agent-swarm", "b2")]
+    res = _run(v, obs1 + obs2, [Cluster("Foo Bar", obs1), Cluster("Foo-Bar", obs2)])
+    assert len(res.written) == 2 and len(set(res.written)) == 2
+    assert len(list(v.rglob("promotions/*.md"))) == 2

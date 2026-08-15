@@ -1,6 +1,7 @@
 """Continuity synthesis settling pass: convergence gate + orchestration."""
 from __future__ import annotations
 
+import hashlib
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -69,6 +70,11 @@ def run_synthesis(reader, writer, store, clusterer: Clusterer, drafter: Drafter,
                 result.skipped.append(cluster.concept)
                 continue
             pid = promotion_id(cluster.concept)
+            if any(p.id == pid for p in existing):   # distinct concept collided on the slug
+                digest = hashlib.sha1(
+                    "|".join(sorted(m.name for m in cluster.members)).encode()
+                ).hexdigest()[:8]
+                pid = f"{pid}-{digest}"
             promo = Promotion(
                 id=pid, scope=scope, title=draft.title, statement=draft.statement,
                 sources=[SourceRef(m.name, m.subject) for m in cluster.members],

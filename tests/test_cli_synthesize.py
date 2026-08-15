@@ -42,3 +42,19 @@ def test_cmd_synthesize_writes_and_reports(tmp_path, capsys):
     assert rc == 0
     assert "written 1" in capsys.readouterr().out
     assert (tmp_path / "10-projects/promotions/cross.md").is_file()
+
+
+def test_cmd_synthesize_default_wiring_smoke(tmp_path, monkeypatch, capsys):
+    import cli
+    import synthesis_pass
+    monkeypatch.setenv("CONTINUITY_VAULT_DIR", str(tmp_path))
+    captured = {}
+    def _fake_run(**deps):
+        captured.update(deps)
+        return synthesis_pass.SynthesisResult(written=[], skipped=[])
+    monkeypatch.setattr(cli, "run_synthesis", _fake_run)
+    rc = cli.cmd_synthesize([])          # no deps -> real provider wiring runs
+    assert rc == 0
+    assert set(captured) == {"reader", "writer", "store", "clusterer", "drafter", "vault_path", "today"}
+    assert str(captured["vault_path"]) == str(tmp_path)
+    assert "written 0" in capsys.readouterr().out

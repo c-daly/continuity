@@ -21,22 +21,26 @@ def cmd_synthesize(argv, deps=None) -> int:
 
     Wires real providers by default; `deps` lets tests inject fakes.
     """
-    if deps is None:
-        from memory_read_provider import MemoryReadProvider
-        from vault_write_provider import VaultWriteProvider
-        from vault_provider import VaultProvider
-        from promotion import PromotionStore
-        from llm_synthesis import ClaudeCliRunner, LLMClusterer, LLMDrafter
+    try:
+        if deps is None:
+            from memory_read_provider import MemoryReadProvider
+            from vault_write_provider import VaultWriteProvider
+            from vault_provider import VaultProvider
+            from promotion import PromotionStore
+            from llm_synthesis import ClaudeCliRunner, LLMClusterer, LLMDrafter
 
-        vault_path = VaultProvider().vault_path
-        runner = ClaudeCliRunner()
-        deps = dict(reader=MemoryReadProvider(),
-                    writer=VaultWriteProvider(vault_path=vault_path),
-                    store=PromotionStore(vault_path),
-                    clusterer=LLMClusterer(runner), drafter=LLMDrafter(runner),
-                    vault_path=vault_path, today=None)
+            vault_path = VaultProvider().vault_path
+            runner = ClaudeCliRunner()
+            deps = dict(reader=MemoryReadProvider(),
+                        writer=VaultWriteProvider(vault_path=vault_path),
+                        store=PromotionStore(vault_path),
+                        clusterer=LLMClusterer(runner), drafter=LLMDrafter(runner),
+                        vault_path=vault_path, today=None)
 
-    res = run_synthesis(**deps)
+        res = run_synthesis(**deps)
+    except (RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     print(f"synthesis: written {len(res.written)}, skipped {len(res.skipped)}")
     return 0
 

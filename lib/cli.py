@@ -13,6 +13,32 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from record_insight import record_insight  # noqa: E402
 from resume_brief import resume_brief  # noqa: E402
+from synthesis_pass import run_synthesis  # noqa: E402
+
+
+def cmd_synthesize(argv, deps=None) -> int:
+    """Run the synthesis pass: cluster observations, draft and write promotions.
+
+    Wires real providers by default; `deps` lets tests inject fakes.
+    """
+    if deps is None:
+        from memory_read_provider import MemoryReadProvider
+        from vault_write_provider import VaultWriteProvider
+        from vault_provider import VaultProvider
+        from promotion import PromotionStore
+        from llm_synthesis import ClaudeCliRunner, LLMClusterer, LLMDrafter
+
+        vault_path = VaultProvider().vault_path
+        runner = ClaudeCliRunner()
+        deps = dict(reader=MemoryReadProvider(),
+                    writer=VaultWriteProvider(vault_path=vault_path),
+                    store=PromotionStore(vault_path),
+                    clusterer=LLMClusterer(runner), drafter=LLMDrafter(runner),
+                    vault_path=vault_path, today=None)
+
+    res = run_synthesis(**deps)
+    print(f"synthesis: written {len(res.written)}, skipped {len(res.skipped)}")
+    return 0
 
 
 def main() -> int:
@@ -38,6 +64,11 @@ def main() -> int:
     ri.add_argument("--project", required=True, help="Project name")
     ri.add_argument("--title", required=True, help="Insight title")
 
+    sub.add_parser(
+        "synthesize",
+        help="Run the synthesis pass: cluster observations, draft and write promotions",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "resume-brief":
@@ -52,6 +83,8 @@ def main() -> int:
             return 1
         print(ref)
         return 0
+    if args.cmd == "synthesize":
+        return cmd_synthesize([])
     return 1
 
 

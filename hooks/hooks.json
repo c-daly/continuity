@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CONTINUITY_ROOT}/hooks/pre-compact.py\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

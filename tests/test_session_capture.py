@@ -69,3 +69,15 @@ def test_precompact_is_registered_as_a_hook():
     assert "PreCompact" in hooks, "PreCompact not registered"
     cmd = hooks["PreCompact"][0]["hooks"][0]["command"]
     assert "pre-compact.py" in cmd
+
+
+def test_both_triggers_ask_for_the_narrative_too():
+    """Narrative upkeep had no writer, no trigger and no instruction — it was
+    pure session habit, which is why it lapsed. The capture request is the only
+    thing that fires at the right moment, so the ask belongs here."""
+    signals = {"cwd": "/home/x/projects/vault-cli"}
+    for out in (pre_compact_capture(signals), session_end_capture(signals)):
+        assert "narrative.md" in out
+        assert "10-projects/vault-cli/narrative.md" in out
+        assert "superseded" in out
+        assert "updated:" in out

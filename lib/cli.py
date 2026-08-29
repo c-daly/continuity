@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from record_insight import record_insight  # noqa: E402
 from resume_brief import resume_brief  # noqa: E402
-from synthesis_pass import run_synthesis  # noqa: E402
+from synthesis_pass import default_synthesis_deps, run_synthesis  # noqa: E402
 
 
 def cmd_synthesize(argv, deps=None) -> int:
@@ -23,19 +23,7 @@ def cmd_synthesize(argv, deps=None) -> int:
     """
     try:
         if deps is None:
-            from memory_read_provider import MemoryReadProvider
-            from vault_write_provider import VaultWriteProvider
-            from vault_provider import VaultProvider
-            from promotion import PromotionStore
-            from llm_synthesis import ClaudeCliRunner, LLMClusterer, LLMDrafter
-
-            vault_path = VaultProvider().vault_path
-            runner = ClaudeCliRunner()
-            deps = dict(reader=MemoryReadProvider(),
-                        writer=VaultWriteProvider(vault_path=vault_path),
-                        store=PromotionStore(vault_path),
-                        clusterer=LLMClusterer(runner), drafter=LLMDrafter(runner),
-                        vault_path=vault_path, today=None)
+            deps = default_synthesis_deps()
 
         res = run_synthesis(**deps)
     except (RuntimeError, ValueError) as exc:

@@ -88,3 +88,26 @@ def run_synthesis(reader, writer, store, clusterer: Clusterer, drafter: Drafter,
             continue
 
     return result
+
+
+def default_synthesis_deps() -> dict:
+    """Wire the real providers for a synthesis run.
+
+    Extracted so every caller gets the same wiring: the CLI, the MCP tool, and
+    any future trigger. Imports are local because the heavy providers (LLM
+    runner, vault writer) should not be pulled in just to import this module —
+    tests inject fakes and never call this.
+    """
+    from memory_read_provider import MemoryReadProvider
+    from vault_write_provider import VaultWriteProvider
+    from vault_provider import VaultProvider
+    from promotion import PromotionStore
+    from llm_synthesis import ClaudeCliRunner, LLMClusterer, LLMDrafter
+
+    vault_path = VaultProvider().vault_path
+    runner = ClaudeCliRunner()
+    return dict(reader=MemoryReadProvider(),
+                writer=VaultWriteProvider(vault_path=vault_path),
+                store=PromotionStore(vault_path),
+                clusterer=LLMClusterer(runner), drafter=LLMDrafter(runner),
+                vault_path=vault_path, today=None)

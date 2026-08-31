@@ -11,10 +11,31 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from session_capture import pre_compact_capture, session_end_capture
 
 HOOKS = Path(__file__).resolve().parent.parent / "hooks"
+
+
+@pytest.fixture(autouse=True)
+def capture_vault(tmp_path, monkeypatch):
+    """A vault to resolve session cwds against, carrying the shapes a cwd
+    basename gets wrong: a project with artifact subdirectories, and a project
+    nesting a sub-project. Autouse so no test reads the developer's real vault
+    and passes by coincidence."""
+    projects = tmp_path / "capture-vault" / "10-projects"
+    (projects / "vault-cli" / "plans").mkdir(parents=True)
+    (projects / "vault-cli" / "narrative.md").write_text("# vault-cli\n")
+    apollo = projects / "LOGOS" / "apollo"
+    apollo.mkdir(parents=True)
+    (apollo / "narrative.md").write_text("# apollo\n")
+    (projects / "LOGOS" / "narrative.md").write_text("# LOGOS\n")
+
+    monkeypatch.setenv("CONTINUITY_VAULT_DIR", str(projects.parent))
+    monkeypatch.delenv("VAULT_DIR", raising=False)
+    return projects.parent
 
 
 def test_pre_compact_names_its_own_trigger():
@@ -81,3 +102,53 @@ def test_both_triggers_ask_for_the_narrative_too():
         assert "10-projects/vault-cli/narrative.md" in out
         assert "superseded" in out
         assert "updated:" in out
+
+
+def test_nested_cwd_still_names_the_canonical_project(capture_vault):
+    """A session run from a subdirectory of the repo. The cwd basename is
+    'src', which names no project — the capture request must still point at
+    vault-cli, or it sends the insight (and the narrative edit) somewhere the
+    real project's content is not."""
+    signals = {"cwd": "/home/x/projects/vault-cli/src"}
+    for out in (pre_compact_capture(signals), session_end_capture(signals)):
+        assert "project='vault-cli'" in out
+        assert "10-projects/vault-cli/narrative.md" in out
+        assert "10-projects/src" not in out
+
+
+def test_artifact_subdirectory_does_not_become_the_project(capture_vault):
+    """plans/ and decisions/ exist inside projects across the vault; a cwd
+    ending in one must resolve to its project, not to some other project's
+    plans directory."""
+    signals = {"cwd": "/home/x/projects/vault-cli/plans"}
+    out = session_end_capture(signals)
+    assert "project='vault-cli'" in out
+    assert "10-projects/vault-cli/narrative.md" in out
+
+
+def test_nested_subproject_gets_its_own_narrative(capture_vault):
+    """The vault nests sub-projects, each with its own narrative. A flat
+    10-projects/<basename> template cannot express that path at all."""
+    out = session_end_capture({"cwd": "/home/x/code/LOGOS/apollo"})
+    assert "project='apollo'" in out
+    assert "10-projects/LOGOS/apollo/narrative.md" in out
+
+
+def test_unknown_cwd_gets_a_placeholder_not_a_fabricated_path(capture_vault):
+    """record_insight creates <project>/insights/ on write, so an invented
+    project name silently makes a duplicate project directory while the real
+    narrative stays stale. A placeholder the agent must fill in is the honest
+    answer when the cwd names nothing in the vault."""
+    out = session_end_capture({"cwd": "/tmp/scratch"})
+    assert "<vault 10-projects basename>" in out
+    assert "10-projects/scratch" not in out
+
+
+def test_falls_back_to_the_basename_when_the_vault_is_unreachable(monkeypatch):
+    """No vault configured in the hook's environment means we cannot verify —
+    keep the basename hint rather than dropping to a placeholder."""
+    monkeypatch.delenv("CONTINUITY_VAULT_DIR", raising=False)
+    monkeypatch.delenv("VAULT_DIR", raising=False)
+    out = session_end_capture({"cwd": "/home/x/projects/vault-cli"})
+    assert "project='vault-cli'" in out
+    assert "10-projects/vault-cli/narrative.md" in out

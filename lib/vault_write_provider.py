@@ -20,6 +20,7 @@ from typing import Any, Optional
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
+from project_registry import resolve as _resolve_project  # noqa: E402
 from write_provider import WriteProvider  # noqa: E402
 
 
@@ -50,12 +51,30 @@ def validate_basename(name: str, label: str) -> None:
         raise ValueError(f"Invalid {label}: {name!r}")
 
 
+
+def validate_relpath(value: str, label: str) -> None:
+    """Validate a vault-relative path one segment at a time.
+
+    A project may be nested (``LOGOS/apollo``), so a single-basename check is
+    too strict — but the traversal risk is unchanged, since the value still
+    reaches path construction. Validating segment-wise keeps both: this is the
+    pattern ``_resolve_promotion`` already applies to ``scope``.
+    """
+    if not value:
+        raise ValueError(f"Invalid {label}: {value!r}")
+    for segment in value.split("/"):
+        validate_basename(segment, label)
+
+
 class VaultWriteProvider(WriteProvider):
     """Write artifacts to an Obsidian PARA-organized vault.
 
     Path mapping (each requires ``project`` in frontmatter):
-    - ``cont.insight``  → ``<vault>/10-projects/<project>/insights/<id>.md``
-    - ``cont.decision`` → ``<vault>/10-projects/<project>/decisions/<id>.md``
+    - ``cont.insight``  → ``<vault>/<project dir>/insights/<id>.md``
+    - ``cont.decision`` → ``<vault>/<project dir>/decisions/<id>.md``
+
+    ``<project dir>`` is resolved through ``project_registry``, so a nested
+    sub-project (``10-projects/LOGOS/apollo``) is addressable by name.
 
     Vault path resolution mirrors ``VaultProvider``:
     1. ``vault_path`` constructor argument
@@ -140,13 +159,18 @@ class VaultWriteProvider(WriteProvider):
     def _resolve(self, kind: str, id: str, project: str) -> Path:
         if kind not in _KIND_TO_SUBDIR:
             raise ValueError(f"Unknown kind: {kind!r}")
-        # Reject path-traversal attempts: project and id must be plain
-        # single-component names. Without this, "../../etc" or absolute paths
-        # would escape the vault root via pathlib's `/` semantics.
-        validate_basename(project, "project")
+        # Reject path-traversal attempts before anything reads the value:
+        # "../../etc" or an absolute path would otherwise escape the vault root
+        # via pathlib's `/` semantics. This runs FIRST because resolution below
+        # answers None for a hostile path and an unknown one alike, and only one
+        # of those may reach the create-a-new-project fallback.
+        validate_relpath(project, "project")
         validate_basename(id, "id")
         subdir = _KIND_TO_SUBDIR[kind]
-        return self.vault_path / "10-projects" / project / subdir / f"{id}.md"
+        # An unknown project is not an error: writing to a name the vault has
+        # never seen is how a new project starts.
+        rel = _resolve_project(project, self.vault_path) or f"10-projects/{project}"
+        return self.vault_path / rel / subdir / f"{id}.md"
 
 
     def _resolve_promotion(self, id: str, scope: str) -> Path:

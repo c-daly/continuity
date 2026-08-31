@@ -59,7 +59,11 @@ def resume_brief(
 
     canonical_project = vault.resolve_project(project)
     if canonical_project is None:
-        available = vault.list_projects()
+        # Every addressable project, nested ones as the path you would pass
+        # back in — addressable but undiscoverable is only half a fix.
+        available = sorted(
+            rel.split("/", 1)[1] for rel in vault.project_dirs().values()
+        )
         if available:
             return (
                 f"Project '{project}' not found under {vault.vault_path}/10-projects/.\n"

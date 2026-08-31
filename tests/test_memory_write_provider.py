@@ -168,3 +168,26 @@ def _write_executable(path: Path, content: str) -> Path:
     path.write_text(content)
     path.chmod(0o755)
     return path
+
+
+def test_nested_project_passes_the_leaf_name_as_subject(tmp_path, monkeypatch):
+    """memory addresses an entity by name and resolves nesting itself, so a
+    nested project's subject is 'apollo', never 'LOGOS/apollo' — which memory
+    would treat as an unresolvable subject."""
+    args_file = tmp_path / "args.txt"
+    memory_bin = tmp_path / "memory"
+    memory_bin.write_text(
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + str(args_file) + "\ncat > /dev/null\n"
+    )
+    memory_bin.chmod(0o755)
+    monkeypatch.setenv("MEMORY_BIN", str(memory_bin))
+
+    MemoryWriteProvider().write(
+        "cont.insight", "2026-08-31-x",
+        {"project": "LOGOS/apollo", "title": "T", "date": "2026-08-31"},
+        "body",
+    )
+
+    args = args_file.read_text().split("\n")
+    assert "apollo" in args
+    assert "LOGOS/apollo" not in args

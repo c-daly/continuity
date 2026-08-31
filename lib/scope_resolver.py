@@ -7,23 +7,32 @@ scope). Unlocatable subjects are dropped, never resolved to root.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).parent))
+from project_registry import resolve as _resolve_project  # noqa: E402
 
 _USER_SUBJECTS = {"user"}
 
 
 def subject_to_relpath(subject: str, vault_path: Path) -> Optional[str]:
+    """Locate a subject's entity directory, or None if it has none.
+
+    Resolution goes through ``project_registry`` rather than a bare walk for
+    directories of the right name. A raw walk matched anything: a subject named
+    ``plans`` or ``decisions`` resolved to some project's artifact directory,
+    and a promotion scoped there is filed inside another project's content.
+    """
     if subject in _USER_SUBJECTS:
         return ""
-    projects = vault_path / "10-projects"
-    if not projects.is_dir():
+    try:
+        return _resolve_project(subject, vault_path)
+    except ValueError:
+        # Ambiguous: several projects share the name. Unlocatable rather than
+        # guessed, which resolve_scope already knows how to drop.
         return None
-    # Exact directory named <subject>, searched within 10-projects (may nest).
-    for cand in sorted(projects.rglob("*")):
-        if cand.is_dir() and cand.name == subject:
-            return cand.relative_to(vault_path).as_posix()
-    return None
 
 
 def resolve_scope(subjects: list[str], vault_path: Path) -> Optional[str]:

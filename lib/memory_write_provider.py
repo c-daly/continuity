@@ -15,7 +15,7 @@ import sys
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from vault_write_provider import validate_basename  # noqa: E402
+from vault_write_provider import validate_basename, validate_relpath  # noqa: E402
 from write_provider import WriteProvider  # noqa: E402
 
 
@@ -128,8 +128,12 @@ def _map_to_memory(kind: str, id: str, frontmatter: dict[str, Any]) -> dict[str,
         raise ValueError(
             f"MemoryWriteProvider requires 'project' in frontmatter for kind {kind!r}"
         )
-    subject = project
-    validate_basename(subject, "project")
+    # memory addresses an entity by NAME and resolves nesting itself, so a
+    # nested project's subject is its leaf ("apollo"), never the vault-relative
+    # path ("LOGOS/apollo") — memory would take that for an unresolvable
+    # subject and refuse the write.
+    validate_relpath(project, "project")
+    subject = project.rsplit("/", 1)[-1]
 
     title = _collapse_spaces(str(frontmatter.get("title") or id))
     return {

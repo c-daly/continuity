@@ -154,3 +154,35 @@ def test_memory_section_is_scored_and_budgeted(fake_vault, tmp_path, monkeypatch
     import json
     idx = json.loads((tmp_path / "relevance.json").read_text())
     assert idx["2026-06-18-pref"]["freq"] == 1
+
+
+def test_resume_brief_reads_a_nested_subproject(fake_vault, monkeypatch):
+    """End to end for the thing that was invisible: a sub-project's brief. Its
+    narrative and decisions live under LOGOS/apollo, which the flat
+    10-projects/<name> path could not reach."""
+    monkeypatch.setenv("CONTINUITY_VAULT_DIR", str(fake_vault))
+    sub = fake_vault / "10-projects" / "LOGOS" / "apollo"
+    (sub / "decisions").mkdir(parents=True)
+    (sub / "narrative.md").write_text(
+        "# Apollo\n\n## 2026-08-20 — shipped the telemetry pass\n\nIt works.\n"
+    )
+    (fake_vault / "10-projects" / "LOGOS" / "narrative.md").write_text("# LOGOS\n")
+
+    brief = resume_brief("apollo")
+
+    assert "# Resume brief: apollo" in brief
+    assert "shipped the telemetry pass" in brief
+
+
+def test_unknown_project_error_lists_nested_projects_too(fake_vault, monkeypatch):
+    """Addressable but undiscoverable is only half a fix — the error that tells
+    you what exists has to name them."""
+    monkeypatch.setenv("CONTINUITY_VAULT_DIR", str(fake_vault))
+    sub = fake_vault / "10-projects" / "LOGOS" / "apollo"
+    sub.mkdir(parents=True)
+    (sub / "narrative.md").write_text("# apollo\n")
+
+    out = resume_brief("no-such-project")
+
+    assert "not found" in out
+    assert "LOGOS/apollo" in out

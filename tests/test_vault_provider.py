@@ -71,183 +71,30 @@ def test_resolve_project_case_insensitive(fake_vault):
     assert vp.resolve_project("no-such-project") is None
 
 
+# --- registry delegation ---
+#
+# The resolution rules themselves live in tests/test_project_registry.py, which
+# is where the logic lives. These only pin that VaultProvider forwards to it —
+# a provider answering the question its own way is the bug the registry exists
+# to prevent.
 
-# --- project_dirs / resolve_project_from_path ---
-
-@pytest.fixture
-def nested_vault(fake_vault):
-    """fake_vault plus the two shapes flat resolution gets wrong: a project
-    with artifact subdirectories, and a project nesting sub-projects."""
-    projects = fake_vault / "10-projects"
-    (projects / "test-project" / "plans").mkdir()
-    (projects / "test-project" / ".memory").mkdir()
-    apollo = projects / "LOGOS" / "apollo"
-    apollo.mkdir(parents=True)
-    (apollo / "narrative.md").write_text("# apollo\n")
-    (projects / "LOGOS" / "narrative.md").write_text("# LOGOS\n")
-    (projects / "LOGOS" / "decisions").mkdir()
-    return fake_vault
-
-
-@pytest.fixture
-def checkout(tmp_path):
-    """Build a work tree at <tmp>/code/<name>, returning its root. Paths here
-    are real directories, not string literals: resolution reads the filesystem
-    to find the work-tree root, so a made-up path would exercise a code path no
-    session ever takes."""
-    def _make(name, subdirs=(), git=True):
-        root = tmp_path / "code" / name
-        root.mkdir(parents=True, exist_ok=True)
-        if git:
-            (root / ".git").mkdir(exist_ok=True)
-        for sub in subdirs:
-            (root / sub).mkdir(parents=True, exist_ok=True)
-        return root
-    return _make
-
-
-def test_project_dirs_maps_projects_to_vault_relative_paths(nested_vault):
-    dirs = VaultProvider(vault_path=nested_vault).project_dirs()
+def test_project_dirs_delegates_to_the_registry(fake_vault):
+    (fake_vault / "10-projects" / "LOGOS" / "apollo").mkdir(parents=True)
+    (fake_vault / "10-projects" / "LOGOS" / "apollo" / "narrative.md").write_text("#\n")
+    dirs = VaultProvider(vault_path=fake_vault).project_dirs()
 
     assert dirs["test-project"] == "10-projects/test-project"
-    assert dirs["LOGOS"] == "10-projects/LOGOS"
-    # Nested sub-projects are projects in their own right — they carry a narrative.
     assert dirs["apollo"] == "10-projects/LOGOS/apollo"
 
 
-def test_project_dirs_excludes_artifact_subdirectories(nested_vault):
-    """decisions/, plans/, .memory/ are artifact directories. Treating one as a
-    project sends a write into a sibling of the real project's content."""
-    dirs = VaultProvider(vault_path=nested_vault).project_dirs()
-
-    assert "plans" not in dirs
-    assert "decisions" not in dirs
-    assert ".memory" not in dirs
-
-
-def test_resolve_project_from_path_walks_up_from_a_nested_cwd(nested_vault, checkout):
-    """The bug this exists for: a session run from a subdirectory of the repo.
-    The basename is 'src', the project is still test-project."""
-    repo = checkout("test-project", subdirs=["src/deep"])
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(repo / "src" / "deep") == (
-        "test-project",
-        "10-projects/test-project",
-    )
-
-
-def test_resolve_project_from_path_skips_artifact_directory_names(
-    nested_vault, checkout
-):
-    """A cwd ending in plans/ must not resolve to some other project's plans/."""
-    repo = checkout("test-project", subdirs=["plans"])
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(repo / "plans") == (
-        "test-project",
-        "10-projects/test-project",
-    )
-
-
-def test_resolve_project_from_path_answers_with_an_addressable_project(
-    nested_vault, checkout
-):
-    """A sub-project directory resolves to the top-level project that owns it.
-
-    Both halves of a capture — the insight and the narrative — have to land in
-    one tree. The write path addresses a project by a single basename under
-    10-projects/, so answering 'apollo' + '10-projects/LOGOS/apollo' would file
-    the insight in a fresh flat 10-projects/apollo/ while sending the narrative
-    edit to LOGOS/apollo: one session, two project trees, one of them invented.
-    """
-    repo = checkout("LOGOS", subdirs=["apollo"])
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(repo / "apollo") == (
-        "LOGOS",
-        "10-projects/LOGOS",
-    )
-
-
-def test_resolve_project_from_path_accepts_a_bare_project_directory(
-    nested_vault, checkout
-):
-    """Not every project is a checkout. With no work tree, the cwd's own name is
-    still evidence — just nothing above it."""
-    plain = checkout("test-project", git=False)
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(plain) == (
-        "test-project",
-        "10-projects/test-project",
-    )
-
-
-def test_resolve_project_from_path_is_case_insensitive(nested_vault, checkout):
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(checkout("logos"))[0] == "LOGOS"
-
-
-def test_resolve_project_from_path_handles_a_git_file_worktree(nested_vault, tmp_path):
-    """`git worktree` and submodules write .git as a FILE, not a directory —
-    an is_dir() check would miss the work-tree root entirely."""
-    repo = tmp_path / "wt" / "test-project"
-    (repo / "lib").mkdir(parents=True)
-    (repo / ".git").write_text("gitdir: /elsewhere/.git/worktrees/x\n")
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(repo / "lib")[0] == "test-project"
-
-
-def test_resolve_project_from_path_ignores_a_coincidental_ancestor(
-    nested_vault, tmp_path
-):
-    """A directory that merely shares a name with a project is coincidence, not
-    evidence: /tmp/LOGOS/scratch is not LOGOS. Attributing to a real-but-wrong
-    project is worse than answering nothing — it is plausible, so the insight
-    lands in another project's tree and edits that project's narrative."""
-    stray = tmp_path / "scratch" / "LOGOS" / "unrelated"
-    stray.mkdir(parents=True)
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(stray) is None
-
-
-def test_resolve_project_from_path_ignores_a_project_name_above_the_checkout(
-    nested_vault, tmp_path
-):
-    """The checkout is the boundary. A project name above it belongs to some
-    unrelated ancestor directory, not to the work in hand."""
-    repo = tmp_path / "LOGOS" / "unrelated-checkout"
+def test_resolve_project_from_path_delegates_to_the_registry(fake_vault, tmp_path):
+    repo = tmp_path / "code" / "test-project"
     (repo / ".git").mkdir(parents=True)
-    vp = VaultProvider(vault_path=nested_vault)
+    (repo / "src").mkdir()
 
-    assert vp.resolve_project_from_path(repo) is None
-
-
-def test_resolve_project_from_path_survives_a_git_repo_high_in_the_tree(
-    nested_vault, tmp_path
-):
-    """A dotfiles repo at ~ makes the entire home directory one 'work tree'.
-    Searching every ancestor up to it would resurrect the coincidence problem
-    across everything the user owns."""
-    (tmp_path / ".git").mkdir()
-    stray = tmp_path / "LOGOS" / "notes" / "scratch"
-    stray.mkdir(parents=True)
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(stray) is None
-
-
-def test_resolve_project_from_path_returns_none_when_nothing_matches(
-    nested_vault, tmp_path
-):
-    vp = VaultProvider(vault_path=nested_vault)
-
-    assert vp.resolve_project_from_path(tmp_path / "scratch") is None
-    assert vp.resolve_project_from_path("") is None
+    assert VaultProvider(vault_path=fake_vault).resolve_project_from_path(
+        repo / "src"
+    ) == ("test-project", "10-projects/test-project")
 
 
 # --- get_narrative_sections ---
@@ -320,3 +167,57 @@ def test_journal_skips_weekly(fake_vault):
     dates = [e["date"] for e in entries]
     assert "week-2026-18" not in dates  # weekly file skipped
     assert all("week" not in d for d in dates)
+
+
+# --- nested sub-projects are addressable ---
+
+@pytest.fixture
+def subproject_vault(fake_vault):
+    """A sub-project with its own narrative and decisions, the shape the real
+    vault uses for LOGOS/apollo."""
+    sub = fake_vault / "10-projects" / "LOGOS" / "apollo"
+    (sub / "decisions").mkdir(parents=True)
+    (sub / "narrative.md").write_text(
+        "# Apollo\n\n## 2026-08-01 — first\n\nStarted.\n"
+        "\n## 2026-08-20 — second\n\nShipped the thing.\n"
+    )
+    (sub / "decisions" / "2026-08-19-use-approach-q.md").write_text(
+        "---\ndate: 2026-08-19\nproject: apollo\n---\n\n# Decision: approach Q\n"
+    )
+    (fake_vault / "10-projects" / "LOGOS" / "narrative.md").write_text("# LOGOS\n")
+    return fake_vault
+
+
+def test_narrative_reads_a_nested_subproject(subproject_vault):
+    """apollo's narrative was invisible: get_narrative_sections built
+    10-projects/apollo/narrative.md, a path nothing has."""
+    vp = VaultProvider(vault_path=subproject_vault)
+    sections = vp.get_narrative_sections("apollo")
+
+    assert [s["heading"] for s in sections] == [
+        "2026-08-20 — second",
+        "2026-08-01 — first",
+    ]
+
+
+def test_decisions_read_from_a_nested_subproject(subproject_vault):
+    vp = VaultProvider(vault_path=subproject_vault)
+
+    assert len(vp.get_decisions("apollo")) == 1
+
+
+def test_project_exists_for_a_nested_subproject(subproject_vault):
+    vp = VaultProvider(vault_path=subproject_vault)
+
+    assert vp.project_exists("apollo") is True
+    assert vp.resolve_project("apollo") == "apollo"
+
+
+def test_resolve_project_dir_returns_the_vault_relative_path(subproject_vault):
+    """The name alone cannot express nesting, so callers that build paths need
+    the directory, not the name."""
+    vp = VaultProvider(vault_path=subproject_vault)
+
+    assert vp.resolve_project_dir("apollo") == "10-projects/LOGOS/apollo"
+    assert vp.resolve_project_dir("test-project") == "10-projects/test-project"
+    assert vp.resolve_project_dir("nope") is None

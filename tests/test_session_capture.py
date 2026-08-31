@@ -16,7 +16,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from session_capture import pre_compact_capture, session_end_capture
-from vault_write_provider import validate_basename
+from project_registry import resolve
+from vault_write_provider import validate_relpath
 
 HOOKS = Path(__file__).resolve().parent.parent / "hooks"
 
@@ -145,21 +146,15 @@ def test_artifact_subdirectory_does_not_become_the_project(capture_vault, checko
     assert "10-projects/vault-cli/narrative.md" in out
 
 
-def test_a_subproject_capture_lands_in_one_tree(capture_vault, checkout):
-    """A session in a sub-project is attributed to the project that owns it,
-    and the insight and the narrative name the same tree.
-
-    'apollo' is the truer answer, but record_insight addresses a project by a
-    single basename under 10-projects/, so it would file the insight in a fresh
-    flat 10-projects/apollo/ while the narrative sat under LOGOS/apollo/ — one
-    session split across two trees, one of them invented. Precision that the
-    write path cannot honour is worse than the coarser true answer."""
+def test_a_subproject_gets_its_own_narrative(capture_vault, checkout):
+    """A session in LOGOS/apollo is apollo's work. It used to be attributed to
+    LOGOS, because record_insight could not address a nested project; now that
+    it can, the capture names the sub-project and its own narrative."""
     out = session_end_capture(
         {"cwd": str(checkout("LOGOS", subdirs=["apollo"]) / "apollo")}
     )
-    assert "project='LOGOS'" in out
-    assert "10-projects/LOGOS/narrative.md" in out
-    assert "10-projects/apollo" not in out
+    assert "project='apollo'" in out
+    assert "10-projects/LOGOS/apollo/narrative.md" in out
 
 
 def test_unknown_cwd_gets_a_placeholder_not_a_fabricated_path(capture_vault, tmp_path):
@@ -211,15 +206,17 @@ def test_guidance_matches_the_narrative_reader_convention(capture_vault):
         assert "append a dated section" in out
 
 
-def test_the_emitted_project_is_one_the_write_path_can_address(
+def test_the_emitted_project_resolves_to_the_narrative_it_names(
     capture_vault, checkout, tmp_path
 ):
-    """The insight and the narrative must name the same tree, and the writer has
-    to be able to reach it. record_insight passes the project through
-    validate_basename and joins it as a single segment under 10-projects/, so
-    any name the guidance emits has to survive that and match the narrative
-    directory it names in the same breath. Nothing else holds the two halves of
-    the capture request together."""
+    """The two halves of a capture must name one directory.
+
+    The guidance tells the agent to edit a narrative and, in the same breath,
+    hands record_insight a project. If the writer resolves that project anywhere
+    other than the directory just named, one session's record is split across
+    two trees — which is exactly what happened when the resolver could express a
+    nested project and the write path could not. Nothing else holds the halves
+    together, so the test pins the join rather than an example of it."""
     scratch = tmp_path / "elsewhere"
     scratch.mkdir()
     cwds = [
@@ -234,7 +231,8 @@ def test_the_emitted_project_is_one_the_write_path_can_address(
         narrative = re.search(r"<vault>/(\S+)/narrative\.md", out).group(1)
         if project == "<vault 10-projects basename>":
             continue
-        validate_basename(project, "project")  # raises if the writer would reject
-        assert narrative == f"10-projects/{project}", (
-            f"{cwd}: insight goes to 10-projects/{project}, narrative to {narrative}"
+        validate_relpath(project, "project")  # raises if the writer would reject
+        assert resolve(project, capture_vault) == narrative, (
+            f"{cwd}: writer resolves {project!r} to "
+            f"{resolve(project, capture_vault)}, guidance names {narrative}"
         )

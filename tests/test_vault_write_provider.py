@@ -203,9 +203,12 @@ def test_exists_no_projects_root(tmp_path):
 
 @pytest.mark.parametrize(
     "bad_project",
-    ["..", "../escape", "/abs/path", "nested/path", ".", ""],
+    ["..", "../escape", "/abs/path", ".", "", "LOGOS/../../etc", "a//b"],
 )
 def test_write_rejects_traversal_in_project(fake_vault, bad_project):
+    """`nested/path` is deliberately absent: a project may be nested now, so the
+    check validates each segment rather than forbidding the separator. Every
+    form that could still climb out of the vault is here."""
     wp = VaultWriteProvider(vault_path=fake_vault)
     with pytest.raises(ValueError):
         wp.write("cont.insight", "ok", {"project": bad_project}, "b")
@@ -302,3 +305,52 @@ def test_exists_promotion_id_matches_literally_not_as_glob(fake_vault):
     assert w.exists("cont.promotion", "aXb") is True
     assert w.exists("cont.promotion", "a*b") is False   # "*" must not glob-match aXb
 
+
+
+# --- nested sub-projects ---
+
+def _nested(vault):
+    sub = vault / "10-projects" / "LOGOS" / "apollo"
+    sub.mkdir(parents=True)
+    (sub / "narrative.md").write_text("# apollo\n")
+    (vault / "10-projects" / "LOGOS" / "narrative.md").write_text("# LOGOS\n")
+    return vault
+
+
+def test_write_places_an_insight_in_a_nested_subproject(tmp_path):
+    """The bug: 'apollo' resolved to a flat 10-projects/apollo/ that nothing
+    has, so the insight and the narrative naming it lived in different trees."""
+    vault = _nested(tmp_path)
+    VaultWriteProvider(vault_path=vault).write(
+        "cont.insight", "2026-08-31-x", {"project": "apollo"}, "body"
+    )
+
+    assert (vault / "10-projects/LOGOS/apollo/insights/2026-08-31-x.md").is_file()
+    assert not (vault / "10-projects/apollo").exists()
+
+
+def test_write_accepts_an_explicit_nested_path(tmp_path):
+    vault = _nested(tmp_path)
+    VaultWriteProvider(vault_path=vault).write(
+        "cont.insight", "2026-08-31-y", {"project": "LOGOS/apollo"}, "body"
+    )
+
+    assert (vault / "10-projects/LOGOS/apollo/insights/2026-08-31-y.md").is_file()
+
+
+def test_write_still_creates_an_unknown_top_level_project(tmp_path):
+    """Writing to a name the vault has never seen is how a new project starts."""
+    vault = _nested(tmp_path)
+    VaultWriteProvider(vault_path=vault).write(
+        "cont.insight", "2026-08-31-z", {"project": "brand-new"}, "body"
+    )
+
+    assert (vault / "10-projects/brand-new/insights/2026-08-31-z.md").is_file()
+
+
+def test_write_still_refuses_to_escape_the_vault(tmp_path):
+    vault = _nested(tmp_path)
+    wp = VaultWriteProvider(vault_path=vault)
+    for hostile in ("../../etc", "/etc", "LOGOS/../../../etc", ".."):
+        with pytest.raises(ValueError):
+            wp.write("cont.insight", "id", {"project": hostile}, "body")

@@ -13,7 +13,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_write_provider  # noqa: E402
-from vault_write_provider import validate_basename  # noqa: E402
+from vault_write_provider import validate_relpath  # noqa: E402
 from write_provider import WriteProvider  # noqa: E402
 
 
@@ -37,7 +37,8 @@ def record_insight(
     """Write an insight artifact and return its kind:id reference.
 
     Args:
-        project: Project name (basename under ``10-projects/``).
+        project: Project name, or vault-relative path for a nested
+            sub-project (``LOGOS/apollo``). Resolved via project_registry.
         title: Human-readable title; slugified into the id.
         body: Markdown body; written verbatim under the frontmatter.
         provider: Optional WriteProvider; defaults to configured selection.
@@ -49,7 +50,8 @@ def record_insight(
     """
     # project flows to filesystem path construction in VaultWriteProvider;
     # validate up front for a clearer error than the writer-layer rejection.
-    validate_basename(project, "project name")
+    # Segment-wise, because a project may be nested (``LOGOS/apollo``).
+    validate_relpath(project, "project name")
     if not title.strip():
         raise ValueError("title is required")
     if not body.strip():

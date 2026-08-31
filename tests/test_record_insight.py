@@ -232,7 +232,33 @@ def test_record_insight_vault_and_memory_semantic_parity(fake_vault, tmp_path):
 
 
 def test_record_insight_rejects_traversal_in_project(fake_vault):
+    """`nested/path` is gone from this list on purpose — a project may be nested
+    now, so validation is segment-wise rather than separator-forbidding."""
     wp = VaultWriteProvider(vault_path=fake_vault)
-    for bad in ["..", "../escape", "/abs/path", "nested/path"]:
+    for bad in ["..", "../escape", "/abs/path", "LOGOS/../../etc", "a//b"]:
         with pytest.raises(ValueError, match="Invalid project name"):
             record_insight(project=bad, title="t", body="b", provider=wp)
+
+
+def test_record_insight_into_a_nested_subproject(fake_vault):
+    """record_insight validated a single basename, so a nested project was
+    rejected before the writer ever saw it."""
+    sub = fake_vault / "10-projects" / "LOGOS" / "apollo"
+    sub.mkdir(parents=True)
+    (sub / "narrative.md").write_text("# apollo\n")
+    provider = VaultWriteProvider(vault_path=fake_vault)
+
+    ref = record_insight(
+        project="apollo", title="A Thing", body="b",
+        provider=provider, today=date(2026, 8, 31),
+    )
+
+    assert ref == "cont.insight:2026-08-31-a-thing"
+    assert (sub / "insights" / "2026-08-31-a-thing.md").is_file()
+
+
+def test_record_insight_still_rejects_traversal(fake_vault):
+    provider = VaultWriteProvider(vault_path=fake_vault)
+    for hostile in ("../../etc", "/etc", "LOGOS/../../../etc"):
+        with pytest.raises(ValueError):
+            record_insight(project=hostile, title="t", body="b", provider=provider)

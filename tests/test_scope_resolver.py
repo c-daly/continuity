@@ -5,7 +5,12 @@ from scope_resolver import subject_to_relpath, resolve_scope
 
 
 def _vault(tmp_path):
-    (tmp_path / "10-projects" / "LOGOS" / "sophia").mkdir(parents=True)
+    sophia = tmp_path / "10-projects" / "LOGOS" / "sophia"
+    sophia.mkdir(parents=True)
+    # A nested project is one that carries its own narrative — that is what
+    # separates LOGOS/sophia from LOGOS/decisions. Every sub-project in the real
+    # vault has one.
+    (sophia / "narrative.md").write_text("# sophia\n")
     (tmp_path / "10-projects" / "agent-swarm").mkdir(parents=True)
     return tmp_path
 
@@ -56,3 +61,38 @@ def test_resolve_scope_three_subjects(tmp_path):
 
 def test_subject_with_glob_metachar_is_literal(tmp_path):
     assert subject_to_relpath("a*b", _vault(tmp_path)) is None
+
+
+def _vault_with_artifacts(tmp_path):
+    v = _vault(tmp_path)
+    (v / "10-projects" / "LOGOS" / "decisions").mkdir()
+    (v / "10-projects" / "agent-swarm" / "plans").mkdir()
+    (v / "10-projects" / "agent-swarm" / ".memory").mkdir()
+    return v
+
+
+def test_artifact_directory_is_not_an_entity(tmp_path):
+    """The raw rglob matched any directory name, so a subject called 'plans' or
+    'decisions' resolved to some project's artifact directory — and a promotion
+    scoped there is filed inside another project's content."""
+    v = _vault_with_artifacts(tmp_path)
+
+    assert subject_to_relpath("plans", v) is None
+    assert subject_to_relpath("decisions", v) is None
+    assert subject_to_relpath(".memory", v) is None
+
+
+def test_artifact_directory_does_not_drag_a_scope_into_a_project(tmp_path):
+    """resolve_scope drops unlocatable subjects, so an artifact name must be
+    unlocatable — otherwise it pulls the common prefix into one project."""
+    v = _vault_with_artifacts(tmp_path)
+
+    assert resolve_scope(["LOGOS", "plans"], v) == "10-projects/LOGOS"
+
+
+def test_real_projects_still_resolve(tmp_path):
+    v = _vault_with_artifacts(tmp_path)
+
+    assert subject_to_relpath("LOGOS", v) == "10-projects/LOGOS"
+    assert subject_to_relpath("sophia", v) == "10-projects/LOGOS/sophia"
+    assert subject_to_relpath("agent-swarm", v) == "10-projects/agent-swarm"

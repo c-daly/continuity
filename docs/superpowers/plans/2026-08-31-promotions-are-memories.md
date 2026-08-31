@@ -990,11 +990,14 @@ Expected: PASS
 In `README.md`, under `## Write providers`, add:
 
 ```markdown
-Promotions are an exception to the `write_provider` setting: they always go
-through the memory plugin, because a promotion *is* a memory and only memory's
-writer indexes it in `MEMORY.md`, which is what every recall path reads. The
-`write_provider` setting governs `cont.insight` only. This is scoping, not
-drift — memories go through memory; insights keep the vault default.
+Promotions always go through the memory plugin, whatever `write_provider` is
+set to. A promotion *is* a memory, and `bin/memory write` updates `MEMORY.md` as
+part of the write — which is what every recall path reads, so the promotion is
+recallable the moment it exists.
+
+This is not a new dependency: synthesis already reads its entire corpus through
+`bin/memory list`, and does nothing at all when memory is unavailable. The
+`write_provider` setting governs `cont.insight`, which keeps the vault default.
 ```
 
 - [ ] **Step 6: Run the full suite and commit**

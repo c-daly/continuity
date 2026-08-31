@@ -194,3 +194,17 @@ def test_resolve_from_path_accepts_a_bare_project_directory(vault, checkout):
 def test_resolve_from_path_returns_none_when_nothing_matches(vault, tmp_path):
     assert resolve_from_path(tmp_path / "scratch", vault) is None
     assert resolve_from_path("", vault) is None
+
+
+def test_resolve_rejects_an_explicit_path_to_an_artifact_directory(vault):
+    """The explicit-path branch accepted anything that was a directory, which
+    skipped the discriminator entirely: LOGOS/decisions is a real directory but
+    not a project, and writing there puts an insight inside another project's
+    decisions tree."""
+    assert resolve("LOGOS/decisions", vault) is None
+    assert resolve("test-project/plans", vault) is None
+    assert resolve("test-project/.memory", vault) is None
+
+
+def test_resolve_still_accepts_an_explicit_path_to_a_real_project(vault):
+    assert resolve("LOGOS/apollo", vault) == "10-projects/LOGOS/apollo"

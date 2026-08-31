@@ -104,10 +104,11 @@ def resolve(project: str, vault_path: Path) -> Optional[str]:
             return rel
 
     if "/" in project:
-        candidate = vault_path / _PROJECTS_ROOT / project
-        if candidate.is_dir():
-            return candidate.relative_to(vault_path).as_posix()
-        return None
+        # Must name a registered project, not merely an existing directory:
+        # `LOGOS/decisions` is a real path but an artifact tree, and accepting
+        # it would file an insight inside another project's decisions.
+        rel = f"{_PROJECTS_ROOT}/{project}"
+        return rel if any(r == rel for _, r in projects) else None
 
     nested = sorted({rel for name, rel in projects if name.casefold() == target})
     if len(nested) == 1:

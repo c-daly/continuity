@@ -71,6 +71,86 @@ def test_resolve_project_case_insensitive(fake_vault):
     assert vp.resolve_project("no-such-project") is None
 
 
+
+# --- project_dirs / resolve_project_from_path ---
+
+@pytest.fixture
+def nested_vault(fake_vault):
+    """fake_vault plus the two shapes flat resolution gets wrong: a project
+    with artifact subdirectories, and a project nesting sub-projects."""
+    projects = fake_vault / "10-projects"
+    (projects / "test-project" / "plans").mkdir()
+    (projects / "test-project" / ".memory").mkdir()
+    apollo = projects / "LOGOS" / "apollo"
+    apollo.mkdir(parents=True)
+    (apollo / "narrative.md").write_text("# apollo\n")
+    (projects / "LOGOS" / "narrative.md").write_text("# LOGOS\n")
+    (projects / "LOGOS" / "decisions").mkdir()
+    return fake_vault
+
+
+def test_project_dirs_maps_projects_to_vault_relative_paths(nested_vault):
+    dirs = VaultProvider(vault_path=nested_vault).project_dirs()
+
+    assert dirs["test-project"] == "10-projects/test-project"
+    assert dirs["LOGOS"] == "10-projects/LOGOS"
+    # Nested sub-projects are projects in their own right — they carry a narrative.
+    assert dirs["apollo"] == "10-projects/LOGOS/apollo"
+
+
+def test_project_dirs_excludes_artifact_subdirectories(nested_vault):
+    """decisions/, plans/, .memory/ are artifact directories. Treating one as a
+    project sends a write into a sibling of the real project's content."""
+    dirs = VaultProvider(vault_path=nested_vault).project_dirs()
+
+    assert "plans" not in dirs
+    assert "decisions" not in dirs
+    assert ".memory" not in dirs
+
+
+def test_resolve_project_from_path_walks_up_from_a_nested_cwd(nested_vault):
+    """The bug this exists for: a session in a subdirectory of the repo.
+    The basename is 'src', the project is still test-project."""
+    vp = VaultProvider(vault_path=nested_vault)
+
+    assert vp.resolve_project_from_path(
+        "/home/x/projects/test-project/src"
+    ) == ("test-project", "10-projects/test-project")
+
+
+def test_resolve_project_from_path_prefers_the_deepest_project(nested_vault):
+    """…/LOGOS/apollo is apollo's work, not LOGOS's — deepest match wins."""
+    vp = VaultProvider(vault_path=nested_vault)
+
+    assert vp.resolve_project_from_path("/home/x/LOGOS/apollo") == (
+        "apollo",
+        "10-projects/LOGOS/apollo",
+    )
+
+
+def test_resolve_project_from_path_is_case_insensitive(nested_vault):
+    vp = VaultProvider(vault_path=nested_vault)
+
+    assert vp.resolve_project_from_path("/home/x/logos")[0] == "LOGOS"
+
+
+def test_resolve_project_from_path_skips_artifact_directory_names(nested_vault):
+    """A cwd ending in plans/ must not resolve to some other project's plans/."""
+    vp = VaultProvider(vault_path=nested_vault)
+
+    assert vp.resolve_project_from_path(
+        "/home/x/projects/test-project/plans"
+    ) == ("test-project", "10-projects/test-project")
+
+
+def test_resolve_project_from_path_returns_none_when_nothing_matches(nested_vault):
+    """Better no answer than a confident wrong one — the caller falls back to a
+    placeholder rather than naming a project directory that does not exist."""
+    vp = VaultProvider(vault_path=nested_vault)
+
+    assert vp.resolve_project_from_path("/tmp/scratch") is None
+    assert vp.resolve_project_from_path("") is None
+
 # --- get_narrative_sections ---
 
 def test_narrative_sections_newest_first(fake_vault):

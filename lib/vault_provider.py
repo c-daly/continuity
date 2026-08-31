@@ -71,6 +71,55 @@ class VaultProvider:
                 return candidate.name
         return None
 
+    def project_dirs(self) -> dict[str, str]:
+        """Map project name to its vault-relative directory.
+
+        A project is a direct child of ``10-projects/``, or a nested directory
+        carrying its own ``narrative.md`` — the vault nests sub-projects
+        (``10-projects/LOGOS/apollo/``) and each has a narrative of its own.
+        Artifact directories (``decisions/``, ``plans/``, ``insights/``,
+        ``.memory/``) are neither, so they never shadow a project.
+
+        A direct child wins over a nested directory of the same name.
+        """
+        projects_dir = self.vault_path / "10-projects"
+        if not projects_dir.is_dir():
+            return {}
+
+        found: dict[str, str] = {}
+        for child in sorted(projects_dir.iterdir()):
+            if child.is_dir():
+                found.setdefault(child.name, child.relative_to(self.vault_path).as_posix())
+        for cand in sorted(projects_dir.rglob("*")):
+            if cand.is_dir() and (cand / "narrative.md").is_file():
+                found.setdefault(cand.name, cand.relative_to(self.vault_path).as_posix())
+        return found
+
+    def resolve_project_from_path(self, path) -> Optional[tuple[str, str]]:
+        """Resolve a filesystem path to the project it sits in.
+
+        Walks the path from its deepest component upward and returns the first
+        component naming a vault project, as ``(canonical name, vault-relative
+        directory)``. Deepest-first so a sub-project beats its parent.
+
+        A session's cwd is not reliably the project directory itself — it is
+        routinely a subdirectory (``.../vault-cli/src``), whose basename names
+        no project at all. Returns None when no component matches, so callers
+        can degrade to a placeholder instead of a confidently wrong path.
+        """
+        if not path:
+            return None
+        lookup: dict[str, tuple[str, str]] = {}
+        for name, rel in self.project_dirs().items():
+            # First writer wins, preserving project_dirs' direct-child precedence.
+            lookup.setdefault(name.casefold(), (name, rel))
+        parts = Path(path).parts
+        for part in reversed(parts):
+            match = lookup.get(part.casefold())
+            if match is not None:
+                return match
+        return None
+
     def get_narrative_sections(self, project: str, last_n: int = 3) -> list[dict]:
         """Read the last N H2 sections from <project>/narrative.md.
 

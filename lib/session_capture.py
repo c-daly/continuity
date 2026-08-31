@@ -36,8 +36,8 @@ def _capture_target(signals: Optional[dict]) -> tuple[str, str]:
     is handed to ``record_insight``, whose writer does ``mkdir(parents=True)``,
     so an invented name silently creates a duplicate project directory while the
     real narrative it should have updated goes on rotting. Resolving against the
-    vault also gets nested sub-projects right, which a flat
-    ``10-projects/<name>`` template cannot express.
+    vault also keeps a session in a sub-project attributed to the project that
+    owns it, rather than to a directory nobody has.
 
     Degradation is deliberate at each step: no cwd, or a cwd naming nothing in
     the vault, yields a placeholder the agent must fill in rather than a

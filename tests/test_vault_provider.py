@@ -150,17 +150,23 @@ def test_resolve_project_from_path_skips_artifact_directory_names(
     )
 
 
-def test_resolve_project_from_path_prefers_the_cwd_over_the_checkout_root(
+def test_resolve_project_from_path_answers_with_an_addressable_project(
     nested_vault, checkout
 ):
-    """…/LOGOS/apollo is apollo's work, not LOGOS's — the directory you are in
-    beats the checkout containing it."""
+    """A sub-project directory resolves to the top-level project that owns it.
+
+    Both halves of a capture — the insight and the narrative — have to land in
+    one tree. The write path addresses a project by a single basename under
+    10-projects/, so answering 'apollo' + '10-projects/LOGOS/apollo' would file
+    the insight in a fresh flat 10-projects/apollo/ while sending the narrative
+    edit to LOGOS/apollo: one session, two project trees, one of them invented.
+    """
     repo = checkout("LOGOS", subdirs=["apollo"])
     vp = VaultProvider(vault_path=nested_vault)
 
     assert vp.resolve_project_from_path(repo / "apollo") == (
-        "apollo",
-        "10-projects/LOGOS/apollo",
+        "LOGOS",
+        "10-projects/LOGOS",
     )
 
 

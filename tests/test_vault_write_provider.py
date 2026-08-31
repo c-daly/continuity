@@ -354,3 +354,28 @@ def test_write_still_refuses_to_escape_the_vault(tmp_path):
     for hostile in ("../../etc", "/etc", "LOGOS/../../../etc", ".."):
         with pytest.raises(ValueError):
             wp.write("cont.insight", "id", {"project": hostile}, "body")
+
+
+def test_write_refuses_an_unregistered_nested_path(tmp_path):
+    """Resolution rejecting `LOGOS/decisions` is not enough on its own — the
+    create-a-new-project fallback would take the unresolved path and write there
+    anyway, straight into another project's decisions tree.
+
+    The asymmetry is deliberate. A top-level project's identity IS its directory
+    under 10-projects/, so writing a new name creates it. A nested project needs
+    a narrative to tell it from an artifact directory, so it must exist first."""
+    vault = _nested(tmp_path)
+    (vault / "10-projects" / "LOGOS" / "decisions").mkdir()
+    wp = VaultWriteProvider(vault_path=vault)
+
+    with pytest.raises(ValueError, match="not a known project"):
+        wp.write("cont.insight", "id", {"project": "LOGOS/decisions"}, "b")
+    assert not (vault / "10-projects/LOGOS/decisions/insights").exists()
+
+
+def test_write_refuses_to_invent_a_nested_project(tmp_path):
+    vault = _nested(tmp_path)
+    wp = VaultWriteProvider(vault_path=vault)
+
+    with pytest.raises(ValueError, match="not a known project"):
+        wp.write("cont.insight", "id", {"project": "LOGOS/brand-new"}, "b")

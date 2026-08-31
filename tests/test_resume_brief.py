@@ -186,3 +186,26 @@ def test_unknown_project_error_lists_nested_projects_too(fake_vault, monkeypatch
 
     assert "not found" in out
     assert "LOGOS/apollo" in out
+
+
+def test_brief_for_a_shadowed_nested_project_reads_that_project(
+    fake_vault, monkeypatch
+):
+    """`LOGOS/logos` is only reachable by path, because the bare name means the
+    top-level project. Canonicalising to the name 'logos' and re-resolving threw
+    that away, so the brief showed LOGOS's content under logos's title —
+    silently, which is the worst way to be wrong."""
+    monkeypatch.setenv("CONTINUITY_VAULT_DIR", str(fake_vault))
+    logos = fake_vault / "10-projects" / "LOGOS"
+    (logos / "logos").mkdir(parents=True)
+    (logos / "narrative.md").write_text(
+        "# LOGOS\n\n## 2026-08-01 — the whole ecosystem\n\nparent content\n"
+    )
+    (logos / "logos" / "narrative.md").write_text(
+        "# Foundry\n\n## 2026-08-02 — the contract floor\n\nsub content\n"
+    )
+
+    brief = resume_brief("LOGOS/logos")
+
+    assert "the contract floor" in brief
+    assert "the whole ecosystem" not in brief

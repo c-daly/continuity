@@ -167,9 +167,20 @@ class VaultWriteProvider(WriteProvider):
         validate_relpath(project, "project")
         validate_basename(id, "id")
         subdir = _KIND_TO_SUBDIR[kind]
-        # An unknown project is not an error: writing to a name the vault has
-        # never seen is how a new project starts.
-        rel = _resolve_project(project, self.vault_path) or f"10-projects/{project}"
+        rel = _resolve_project(project, self.vault_path)
+        if rel is None:
+            # An unknown BASENAME is not an error: writing to a name the vault
+            # has never seen is how a new top-level project starts. An unknown
+            # PATH is, because a nested project is only distinguishable from an
+            # artifact directory by the narrative it carries — inventing one
+            # would write into `LOGOS/decisions` as readily as `LOGOS/apollo`.
+            if "/" in project:
+                raise ValueError(
+                    f"{project!r} is not a known project. A nested project must "
+                    f"already exist (carry a narrative.md); only a top-level "
+                    f"project is created by writing to it."
+                )
+            rel = f"10-projects/{project}"
         return self.vault_path / rel / subdir / f"{id}.md"
 
 

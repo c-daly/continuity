@@ -74,9 +74,13 @@ def resume_brief(
             f"No projects found under {vault.vault_path}/10-projects/."
         )
 
-    narrative_sections = vault.get_narrative_sections(canonical_project, last_n=2)
+    # Read with the caller's identifier, not the canonical name. A shadowed
+    # nested project (`LOGOS/logos`) is reachable only by path, because a bare
+    # name means the top-level project — so re-resolving the name would read
+    # LOGOS and present it under logos's title.
+    narrative_sections = vault.get_narrative_sections(project, last_n=2)
     decisions = vault.get_decisions(
-        canonical_project, since=_date_n_days_ago(_DECISIONS_LOOKBACK_DAYS)
+        project, since=_date_n_days_ago(_DECISIONS_LOOKBACK_DAYS)
     )
     journal = vault.get_journal_entries(days_back=_JOURNAL_DAYS_BACK)
 

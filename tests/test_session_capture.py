@@ -152,3 +152,17 @@ def test_falls_back_to_the_basename_when_the_vault_is_unreachable(monkeypatch):
     out = session_end_capture({"cwd": "/home/x/projects/vault-cli"})
     assert "project='vault-cli'" in out
     assert "10-projects/vault-cli/narrative.md" in out
+
+
+def test_guidance_matches_the_narrative_reader_convention(capture_vault):
+    """VaultProvider.get_narrative_sections does sections[-last_n:][::-1] — the
+    narrative is append-only, newest last. Telling the agent to *prepend* would
+    put the newest section at the top, so the resume brief would surface the
+    project's three oldest sections as its current state. The guidance and the
+    reader have to agree or the brief silently rots."""
+    for out in (
+        pre_compact_capture({"cwd": "/home/x/projects/vault-cli"}),
+        session_end_capture({"cwd": "/home/x/projects/vault-cli"}),
+    ):
+        assert "prepend" not in out
+        assert "append a dated section" in out

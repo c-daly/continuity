@@ -38,6 +38,23 @@ def capture_vault(tmp_path, monkeypatch):
     return projects.parent
 
 
+@pytest.fixture
+def checkout(tmp_path):
+    """Build a work tree at <tmp>/code/<name>, returning its root. Real
+    directories, not string literals: the resolver reads the filesystem to find
+    the work-tree root, so a made-up path exercises a code path no session
+    takes."""
+    def _make(name, subdirs=(), git=True):
+        root = tmp_path / "code" / name
+        root.mkdir(parents=True, exist_ok=True)
+        if git:
+            (root / ".git").mkdir(exist_ok=True)
+        for sub in subdirs:
+            (root / sub).mkdir(parents=True, exist_ok=True)
+        return root
+    return _make
+
+
 def test_pre_compact_names_its_own_trigger():
     out = pre_compact_capture({"cwd": "/home/x/projects/vault-cli"})
     assert "WRITE-BEFORE-COMPACT" in out
@@ -104,44 +121,61 @@ def test_both_triggers_ask_for_the_narrative_too():
         assert "updated:" in out
 
 
-def test_nested_cwd_still_names_the_canonical_project(capture_vault):
+def test_nested_cwd_still_names_the_canonical_project(capture_vault, checkout):
     """A session run from a subdirectory of the repo. The cwd basename is
     'src', which names no project — the capture request must still point at
     vault-cli, or it sends the insight (and the narrative edit) somewhere the
     real project's content is not."""
-    signals = {"cwd": "/home/x/projects/vault-cli/src"}
+    signals = {"cwd": str(checkout("vault-cli", subdirs=["src"]) / "src")}
     for out in (pre_compact_capture(signals), session_end_capture(signals)):
         assert "project='vault-cli'" in out
         assert "10-projects/vault-cli/narrative.md" in out
         assert "10-projects/src" not in out
 
 
-def test_artifact_subdirectory_does_not_become_the_project(capture_vault):
+def test_artifact_subdirectory_does_not_become_the_project(capture_vault, checkout):
     """plans/ and decisions/ exist inside projects across the vault; a cwd
     ending in one must resolve to its project, not to some other project's
     plans directory."""
-    signals = {"cwd": "/home/x/projects/vault-cli/plans"}
+    signals = {"cwd": str(checkout("vault-cli", subdirs=["plans"]) / "plans")}
     out = session_end_capture(signals)
     assert "project='vault-cli'" in out
     assert "10-projects/vault-cli/narrative.md" in out
 
 
-def test_nested_subproject_gets_its_own_narrative(capture_vault):
+def test_nested_subproject_gets_its_own_narrative(capture_vault, checkout):
     """The vault nests sub-projects, each with its own narrative. A flat
     10-projects/<basename> template cannot express that path at all."""
-    out = session_end_capture({"cwd": "/home/x/code/LOGOS/apollo"})
+    out = session_end_capture(
+        {"cwd": str(checkout("LOGOS", subdirs=["apollo"]) / "apollo")}
+    )
     assert "project='apollo'" in out
     assert "10-projects/LOGOS/apollo/narrative.md" in out
 
 
-def test_unknown_cwd_gets_a_placeholder_not_a_fabricated_path(capture_vault):
+def test_unknown_cwd_gets_a_placeholder_not_a_fabricated_path(capture_vault, tmp_path):
     """record_insight creates <project>/insights/ on write, so an invented
     project name silently makes a duplicate project directory while the real
     narrative stays stale. A placeholder the agent must fill in is the honest
     answer when the cwd names nothing in the vault."""
-    out = session_end_capture({"cwd": "/tmp/scratch"})
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    out = session_end_capture({"cwd": str(scratch)})
     assert "<vault 10-projects basename>" in out
     assert "10-projects/scratch" not in out
+
+
+def test_a_coincidental_path_component_does_not_claim_the_project(
+    capture_vault, tmp_path
+):
+    """/tmp/LOGOS/notes is not LOGOS. Recording there would put this session's
+    insight in LOGOS's tree and send the agent to edit LOGOS's narrative —
+    corrupting two projects' records at once instead of neither."""
+    stray = tmp_path / "LOGOS" / "notes"
+    stray.mkdir(parents=True)
+    out = session_end_capture({"cwd": str(stray)})
+    assert "<vault 10-projects basename>" in out
+    assert "LOGOS" not in out
 
 
 def test_falls_back_to_the_basename_when_the_vault_is_unreachable(monkeypatch):

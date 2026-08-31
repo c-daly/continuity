@@ -1024,7 +1024,20 @@ Run each by editing the source, running `python3 -m pytest -q`, confirming the e
 
 ## Self-review notes
 
-- **Spec coverage:** C1 → Task 6; C2 → Task 3; C3 → Task 5 (rejection test); C4 → Task 5 wiring + Task 8 README; C5 → `supersedes`/`superseded_by` are simply not written (Task 5 constructs `Promotion` without them and nothing persists them); C6 → `scope` stays on the dataclass, derived from file location in Task 3.
-- **Open question 1 from the spec** (whether a promotion's description carries a marker) is resolved here as **no marker** — `draft.statement` is used verbatim, consistent with *once promoted, it is just a memory*.
-- **Open question 2** (filter in the pass or the reader) is resolved as **in the pass**, so `MemoryReadProvider` keeps returning what memory actually has.
-- **Open question 3** (should the surfacing hook prefer promotions) is out of scope and stays open.
+- **Spec coverage:** D1 → Task 6; D2 → Task 3; D3 → Task 5 (rejection test);
+  D4 → Task 5 wiring + Task 8 README; D5 → Task 5 constructs `Promotion` without
+  those fields and nothing persists them; D6 → `scope` derived from file location
+  in Task 3; D7 → Task 5 passes `draft.statement` as the description verbatim;
+  D8 → Task 6 filters inside `run_synthesis`.
+- **No open questions.** Every fork is closed in the spec's Decisions section.
+  If a step here looks like it needs a judgement call, that is a defect in this
+  plan — stop and fix the plan rather than deciding at the keyboard.
+- **Type consistency:** `promotion_body`/`parse_consolidates` (Task 1),
+  `MemoryPromotionStore` (Task 3), `promotion_type`/`scope_to_subject` (Task 4),
+  `FakeWriter`/`FakeStore`/`_obs(subject, name, type=...)` (Task 4) are each
+  defined before first use, and `_obs` keeps its existing `(subject, name)`
+  argument order.
+- **Out of scope, deliberately not listed as a question:** whether the
+  every-prompt surfacing hook should rank promotions above the memories they
+  consolidate. That belongs to `~/.claude/hooks/surface-memory.py`, which this
+  change does not touch. It is tracked as its own item, not carried here.

@@ -95,17 +95,39 @@ class VaultProvider:
                 found.setdefault(cand.name, cand.relative_to(self.vault_path).as_posix())
         return found
 
+    @staticmethod
+    def _work_root(path: Path) -> Optional[Path]:
+        """Nearest ancestor of ``path`` (itself included) holding a ``.git``.
+
+        ``.git`` is a file, not a directory, inside a linked worktree or a
+        submodule, so this tests existence rather than directory-ness.
+        """
+        for candidate in (path, *path.parents):
+            if (candidate / ".git").exists():
+                return candidate
+        return None
+
     def resolve_project_from_path(self, path) -> Optional[tuple[str, str]]:
         """Resolve a filesystem path to the project it sits in.
 
-        Walks the path from its deepest component upward and returns the first
-        component naming a vault project, as ``(canonical name, vault-relative
-        directory)``. Deepest-first so a sub-project beats its parent.
+        Only two directories on the path carry identity: **the one you are in**,
+        and **the root of the checkout you are in**. A session's cwd is not
+        reliably the project directory — it is routinely a subdirectory
+        (``.../vault-cli/src``) whose basename names no project at all — so the
+        checkout root has to be consulted too.
 
-        A session's cwd is not reliably the project directory itself — it is
-        routinely a subdirectory (``.../vault-cli/src``), whose basename names
-        no project at all. Returns None when no component matches, so callers
-        can degrade to a placeholder instead of a confidently wrong path.
+        Everything between and above them is rejected, because a directory that
+        merely shares a name with a project is coincidence: ``memory``,
+        ``harness`` and ``LOGOS`` all make plausible generic directory names, and
+        ``/tmp/LOGOS/scratch`` is not LOGOS. Walking every ancestor would also
+        collapse under a ``.git`` high in the tree — a dotfiles repo at ``~``
+        makes the whole home directory one "work tree" — which is exactly when
+        the coincidences multiply.
+
+        The cwd is checked first, so a sub-project beats its parent checkout.
+        Returns ``(canonical name, vault-relative directory)``, or None when
+        neither matches: attributing to a real but wrong project is worse than
+        answering nothing, being plausible enough to be acted on.
         """
         if not path:
             return None
@@ -113,9 +135,13 @@ class VaultProvider:
         for name, rel in self.project_dirs().items():
             # First writer wins, preserving project_dirs' direct-child precedence.
             lookup.setdefault(name.casefold(), (name, rel))
-        parts = Path(path).parts
-        for part in reversed(parts):
-            match = lookup.get(part.casefold())
+
+        cwd = Path(path)
+        root = self._work_root(cwd)
+        for candidate in (cwd, root):
+            if candidate is None:
+                continue
+            match = lookup.get(candidate.name.casefold())
             if match is not None:
                 return match
         return None

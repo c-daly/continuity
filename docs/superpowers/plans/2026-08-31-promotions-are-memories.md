@@ -755,76 +755,79 @@ git commit -m "feat(synthesis): write promotions through memory so they are reca
 
 ---
 
-## Task 6: Keep synthesis from re-clustering its own output
+## Task 6: Prove a promotion can itself be promoted
 
 **Files:**
-- Modify: `lib/synthesis_pass.py` (`run_synthesis`, after `observations = reader.list()`)
 - Test: `tests/test_synthesis_pass.py`
 
 **Interfaces:**
-- Consumes: `MemoryPromotionStore.list()` (Task 3)
-- Produces: no new public names
+- Consumes: everything from Task 5. No implementation — this pins behaviour that
+  must already work.
 
-Promotions are indexed in `MEMORY.md` now, so `reader.list()` returns them alongside first-order observations. Without a filter the pass clusters its own output, which is the proliferation the design's *converge, not proliferate* invariant forbids.
+Promotions being memories is what allows synthesis to operate on its own output.
+No filter keeps them out of the corpus; the gate is what prevents runaway. These
+tests pin both halves, so a future "tidy-up" cannot quietly reintroduce a filter.
 
-- [ ] **Step 1: Write the failing test**
-
-```python
-def test_a_promotion_is_not_fed_back_into_clustering(tmp_path):
-    """Promotions live in MEMORY.md now, so reader.list() returns them. Feeding
-    them back would let the pass promote its own output — the proliferation the
-    convergence invariant forbids."""
-    promoted = _obs("LOGOS", "already-settled")
-    corpus = [_obs("LOGOS", "a"), _obs("memory", "b"), promoted]
-    seen = {}
-
-    class RecordingClusterer:
-        def cluster(self, observations, existing):
-            seen["names"] = [o.name for o in observations]
-            return []
-
-    run_synthesis(FakeReader(corpus), FakeWriter(), FakeStore([
-        Promotion(id="already-settled", scope="10-projects/LOGOS", title="",
-                  statement="", sources=[SourceRef("a", "LOGOS")],
-                  instances=1, created_at="2026-08-30"),
-    ]), RecordingClusterer(), FakeDrafter(consolidates=True),
-        vault_path=_vault(tmp_path), today=date(2026, 8, 31))
-
-    assert seen["names"] == ["a", "b"]
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `python3 -m pytest tests/test_synthesis_pass.py -q -k fed_back`
-Expected: FAIL — `assert ['a', 'b', 'already-settled'] == ['a', 'b']`
-
-- [ ] **Step 3: Write minimal implementation**
-
-In `run_synthesis`, after `existing = store.list()`, insert:
+- [ ] **Step 1: Write the tests**
 
 ```python
-    # Promotions are ordinary memories, so reader.list() returns them too.
-    # Feeding them back would let the pass promote its own output; the corpus
-    # stays first-order, which is the invariant the gate was designed around.
-    promoted_names = {p.id for p in existing}
-    observations = [o for o in observations if o.name not in promoted_names]
-    if not observations:
-        return result
+def test_a_promotion_can_be_consolidated_further(tmp_path):
+    """Higher-order promotion is the point of promotions being memories: a
+    settled idea plus a new instance settles again, one level up."""
+    settled = _obs("LOGOS", "already-settled")
+    fresh = _obs("memory", "new-instance")
+    writer = FakeWriter()
+
+    run_synthesis(
+        reader=FakeReader([settled, fresh]), writer=writer,
+        store=FakeStore([Promotion(
+            id="already-settled", scope="10-projects/LOGOS", title="", statement="",
+            sources=[SourceRef("a", "LOGOS"), SourceRef("b", "memory")],
+            instances=2, created_at="2026-08-30")]),
+        clusterer=FakeClusterer([Cluster("broader idea", [settled, fresh])]),
+        drafter=FakeDrafter(consolidates=True),
+        vault_path=_vault(tmp_path), today=date(2026, 8, 31),
+    )
+
+    kind, pid, fm, body = writer.calls[0]
+    assert pid == "broader-idea"
+    assert "- [[already-settled]]" in body   # lineage points at the promotion
+    assert "- [[new-instance]]" in body
+
+
+def test_an_unchanged_promotion_is_not_reminted(tmp_path):
+    """Convergence comes from the gate, not from excluding promotions: a
+    re-cluster of a promotion with its own sources is already covered."""
+    members = [_obs("LOGOS", "a"), _obs("memory", "b")]
+    settled = _obs("LOGOS", "already-settled")
+    writer = FakeWriter()
+
+    result = run_synthesis(
+        reader=FakeReader(members + [settled]), writer=writer,
+        store=FakeStore([Promotion(
+            id="already-settled", scope="10-projects/LOGOS", title="", statement="",
+            sources=[SourceRef("a", "LOGOS"), SourceRef("b", "memory")],
+            instances=2, created_at="2026-08-30")]),
+        clusterer=FakeClusterer([Cluster("same idea", members + [settled])]),
+        drafter=FakeDrafter(consolidates=True),
+        vault_path=_vault(tmp_path), today=date(2026, 8, 31),
+    )
+
+    assert writer.calls == []
+    assert result.skipped == ["same idea"]
 ```
 
-Move `existing = store.list()` above the filter if it is not already there.
+- [ ] **Step 2: Run them**
 
-- [ ] **Step 4: Run tests to verify they pass**
+Run: `python3 -m pytest tests/test_synthesis_pass.py -q -k "consolidated_further or reminted"`
+Expected: PASS with no implementation change. If either fails, Task 5 is wrong —
+fix there.
 
-Run: `python3 -m pytest tests/test_synthesis_pass.py -q`
-Expected: PASS
-
-- [ ] **Step 5: Run the full suite and commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-python3 -m pytest -q
-git add lib/synthesis_pass.py tests/test_synthesis_pass.py
-git commit -m "fix(synthesis): keep promotions out of the clustering corpus"
+git add tests/test_synthesis_pass.py
+git commit -m "test(synthesis): pin that promotions can themselves be promoted"
 ```
 
 ---
@@ -1015,7 +1018,7 @@ Match the bar set in PRs #12 and #13. Each mutation must fail at least one test:
 | `parse_consolidates` returns `[]` instead of `None` for a plain memory | Task 3 `ignores_ordinary_memories` |
 | `promotion_type` always returns `"project"` | Task 4 unanimous-inheritance |
 | `scope_to_subject` returns the whole scope instead of the leaf | Task 4 mapping, Task 8 placement |
-| The corpus filter in Task 6 is removed | Task 6 |
+| A filter is added that keeps promotions out of the corpus | Task 6 `consolidated_further` |
 | `run_synthesis` lets a write rejection propagate | Task 5 rejection test |
 
 Run each by editing the source, running `python3 -m pytest -q`, confirming the expected failure, then restoring.
@@ -1024,11 +1027,11 @@ Run each by editing the source, running `python3 -m pytest -q`, confirming the e
 
 ## Self-review notes
 
-- **Spec coverage:** D1 → Task 6; D2 → Task 3; D3 → Task 5 (rejection test);
+- **Spec coverage:** D1 → Task 6 (no filter; recursion pinned as working); D2 → Task 3; D3 → Task 5 (rejection test);
   D4 → Task 5 wiring + Task 8 README; D5 → Task 5 constructs `Promotion` without
   those fields and nothing persists them; D6 → `scope` derived from file location
   in Task 3; D7 → Task 5 passes `draft.statement` as the description verbatim;
-  D8 → Task 6 filters inside `run_synthesis`.
+  D8 → withdrawn with D1's filter; nothing to place.
 - **No open questions.** Every fork is closed in the spec's Decisions section.
   If a step here looks like it needs a judgement call, that is a defect in this
   plan — stop and fix the plan rather than deciding at the keyboard.

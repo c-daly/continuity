@@ -124,17 +124,29 @@ class VaultProvider:
         makes the whole home directory one "work tree" — which is exactly when
         the coincidences multiply.
 
-        The cwd is checked first, so a sub-project beats its parent checkout.
         Returns ``(canonical name, vault-relative directory)``, or None when
         neither matches: attributing to a real but wrong project is worse than
         answering nothing, being plausible enough to be acted on.
+
+        The answer is always an **addressable** project — a direct child of
+        ``10-projects/``. Sub-project directories are recognised, so a session
+        in ``LOGOS/apollo`` is attributed rather than lost, but the answer is
+        the top-level project owning them. Callers write through providers that
+        address a project by a single basename, so returning ``apollo`` would
+        file the insight in a fresh flat ``10-projects/apollo/`` while the
+        narrative it names lives under ``LOGOS/`` — one session split across two
+        trees, one of them invented. Addressing sub-projects end to end needs
+        the write path to take a nested project first.
         """
         if not path:
             return None
         lookup: dict[str, tuple[str, str]] = {}
         for name, rel in self.project_dirs().items():
+            segments = rel.split("/")
+            # Collapse to the top-level project: <projects-root>/<name>.
+            top = (segments[1], "/".join(segments[:2]))
             # First writer wins, preserving project_dirs' direct-child precedence.
-            lookup.setdefault(name.casefold(), (name, rel))
+            lookup.setdefault(name.casefold(), top)
 
         cwd = Path(path)
         root = self._work_root(cwd)

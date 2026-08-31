@@ -32,7 +32,7 @@
 | `lib/memory_write_provider.py` | Pass explicit memory fields through for `cont.promotion` | Modify |
 | `lib/vault_write_provider.py` | Drop the promotion artifact path entirely | Modify — delete |
 | `tests/test_promotion.py` | Body format + provenance parsing + reader | Modify |
-| `tests/test_synthesis_pass.py` | Type/subject derivation, corpus filter, write path | Modify |
+| `tests/test_synthesis_pass.py` | Type/subject derivation, write path, higher-order promotion | Modify |
 | `tests/test_memory_write_provider.py` | Promotion pass-through | Modify |
 | `tests/test_vault_write_provider.py` | Remove promotion cases | Modify |
 | `tests/test_promotion_store.py` | Superseded by the `.memory/` reader tests | Delete |

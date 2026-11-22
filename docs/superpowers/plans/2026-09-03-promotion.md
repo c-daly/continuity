@@ -1,5 +1,7 @@
 # Promotion Implementation Plan
 
+> **Status (2026-11-22): superseded, not executed.** Memory's 2026-09-05 correction (memory PR #11) rejected the memory half of this plan: there is no `--promotes` flag, no index omission and no `get` fallback. Memory instead persists caller-supplied frontmatter through `--field KEY=VALUE` and never interprets it (memory narrative, 2026-09-05: "Continuity writes `promotes: <name>` through this like any other field."). Tasks 1 to 3 are withdrawn. Tasks 4 to 8 were written against the flag and need re-planning against `--field promotes=<name>` before any of them is run.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Re-scope a memory that was recorded at too specific a level, by writing the same claim at the level where it applies, tagged so queries return the new one and an agent can still reach the original.

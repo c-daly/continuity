@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from memory_read_provider import MemoryObservation  # noqa: E402
-from relevance import _age_days, index_path, load_index, rank, record_surfaced, score  # noqa: E402
+from relevance import _FREQ_CAP, _age_days, index_path, load_index, rank, record_surfaced, score  # noqa: E402
 
 
 def _obs(name, type_="project"):
@@ -15,6 +15,27 @@ def _obs(name, type_="project"):
 
 def test_age_days_parses_name_prefix():
     assert _age_days("2026-06-01-foo", date(2026, 6, 11)) == 10
+
+
+def test_age_days_prefers_the_entry_date():
+    assert _age_days("foo", date(2026, 6, 11), entry_date="2026-06-01") == 10
+
+
+def test_age_days_falls_back_to_name_when_entry_date_is_bad():
+    assert _age_days("2026-06-01-foo", date(2026, 6, 11), entry_date="garbage") == 10
+
+
+def test_frequency_boost_is_capped():
+    obs = MemoryObservation("project", "p", "n", "d", date="2026-06-01")
+    today = date(2026, 6, 30)
+    assert score(obs, _FREQ_CAP, today) == score(obs, 1005, today)
+
+
+def test_fresh_entry_outranks_a_heavily_surfaced_old_one():
+    today = date(2026, 6, 30)
+    old = MemoryObservation("project", "p", "old", "d", date="2026-06-01")
+    new = MemoryObservation("project", "p", "new", "d", date="2026-06-30")
+    assert score(new, 0, today) > score(old, 1005, today)
 
 
 def test_age_days_undated_name_is_zero():

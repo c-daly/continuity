@@ -1,5 +1,6 @@
 """Tests for memory_read_provider — parser, provider, availability."""
 
+import shlex
 from pathlib import Path
 
 from memory_read_provider import (
@@ -11,6 +12,36 @@ from memory_read_provider import (
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "memory_list_sample.txt"
+
+
+# ----- JSON list + fallback -----
+
+
+def _fake_bin(tmp_path, body):
+    p = tmp_path / "memory"
+    p.write_text("#!/usr/bin/env bash\n" + body)
+    p.chmod(0o755)
+    return p
+
+
+def test_list_reads_json_rows_with_dates(tmp_path):
+    row = '{"type":"project","subject":"s","name":"n","description":"d","path":"x/2026-06-01-n.md","date":"2026-06-01"}'
+    fake = _fake_bin(
+        tmp_path,
+        f'[[ " $* " == *" --format json "* ]] && echo {shlex.quote(row)} && exit 0\nexit 9\n',
+    )
+    assert MemoryReadProvider(memory_bin=fake).list(subject="s") == [
+        MemoryObservation("project", "s", "n", "d", date="2026-06-01")
+    ]
+
+
+def test_list_falls_back_to_text_when_json_is_refused(tmp_path):
+    fake = _fake_bin(
+        tmp_path,
+        '[[ " $* " == *" --format "* ]] && exit 2\necho "project:s:n — d"\n',
+    )
+    [obs] = MemoryReadProvider(memory_bin=fake).list(subject="s")
+    assert obs.name == "n" and obs.date is None
 
 
 # ----- parser unit tests -----

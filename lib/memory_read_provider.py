@@ -20,6 +20,7 @@ the whole list call.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class MemoryObservation:
     subject: str
     name: str
     description: str
+    date: Optional[str] = None  # ISO file date from `--format json`; None on text fallback
 
 
 class MemoryReadProvider:
@@ -85,12 +87,28 @@ class MemoryReadProvider:
         environment, but resume-brief callers should not crash on a single
         bad bullet).
         """
-        cmd = [str(self.memory_bin), "list"]
+        filters: list[str] = []
         if type_ is not None:
-            cmd.extend(["--type", type_])
+            filters.extend(["--type", type_])
         if subject is not None:
-            cmd.extend(["--subject", subject])
+            filters.extend(["--subject", subject])
+        base = str(self.memory_bin)
 
+        # Prefer the JSON form (carries the real file date); fall back to the
+        # text form when the CLI predates `--format json` or emits bad JSON.
+        stdout = self._run([base, "list", "--format", "json", *filters])
+        if stdout is not None:
+            rows = _parse_json_rows(stdout)
+            if rows is not None:
+                return rows
+
+        stdout = self._run([base, "list", *filters])
+        if stdout is None:
+            return []
+        return _parse_list_output(stdout)
+
+    def _run(self, cmd: list[str]) -> Optional[str]:
+        """Run `cmd`; return stdout, or None on failure / non-zero exit."""
         try:
             result = subprocess.run(
                 cmd,
@@ -100,12 +118,10 @@ class MemoryReadProvider:
                 timeout=10,
             )
         except (subprocess.SubprocessError, OSError):
-            return []
-
+            return None
         if result.returncode != 0:
-            return []
-
-        return _parse_list_output(result.stdout)
+            return None
+        return result.stdout
 
     def _subprocess_env(self) -> dict[str, str]:
         env = dict(os.environ if self.env is None else self.env)
@@ -114,6 +130,56 @@ class MemoryReadProvider:
             if vault_dir:
                 env["MEMORY_VAULT_DIR"] = vault_dir
         return env
+
+
+def _parse_json_rows(text: str) -> Optional[list[MemoryObservation]]:
+    """Parse `memory list --format json` (one JSON object per line).
+
+    Returns None if any non-empty line is not a usable JSON object, so the
+    caller can fall back to the text form.
+    """
+    observations: list[MemoryObservation] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            return None
+        observation = _observation_from_row(row)
+        if observation is None:
+            return None
+        observations.append(observation)
+    return observations
+
+
+def _observation_from_row(row: object) -> Optional[MemoryObservation]:
+    """Build an observation from one decoded JSON row, or None if it is unusable.
+
+    `type`, `subject` and `name` must be non-empty strings. `description` and
+    `date` may be absent or null, but must be strings when present. A value of
+    the wrong type would otherwise pass here and raise later, during ranking.
+    """
+    if not isinstance(row, dict):
+        return None
+    required = [row.get(key) for key in ("type", "subject", "name")]
+    if not all(isinstance(value, str) and value for value in required):
+        return None
+    description = row.get("description")
+    entry_date = row.get("date")
+    if description is not None and not isinstance(description, str):
+        return None
+    if entry_date is not None and not isinstance(entry_date, str):
+        return None
+    type_, subject, name = required
+    return MemoryObservation(
+        type=type_,
+        subject=subject,
+        name=name,
+        description=description or "",
+        date=entry_date,
+    )
 
 
 def _parse_list_output(text: str) -> list[MemoryObservation]:

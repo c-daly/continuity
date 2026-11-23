@@ -1,16 +1,83 @@
 """Tests for memory_read_provider — parser, provider, availability."""
 
+import shlex
 from pathlib import Path
+
+import pytest
 
 from memory_read_provider import (
     MemoryObservation,
     MemoryReadProvider,
+    _parse_json_rows,
     _parse_line,
     _parse_list_output,
 )
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "memory_list_sample.txt"
+
+
+# ----- JSON list + fallback -----
+
+
+def _fake_bin(tmp_path, body):
+    p = tmp_path / "memory"
+    p.write_text("#!/usr/bin/env bash\n" + body)
+    p.chmod(0o755)
+    return p
+
+
+def test_list_reads_json_rows_with_dates(tmp_path):
+    row = '{"type":"project","subject":"s","name":"n","description":"d","path":"x/2026-06-01-n.md","date":"2026-06-01"}'
+    fake = _fake_bin(
+        tmp_path,
+        f'[[ " $* " == *" --format json "* ]] && echo {shlex.quote(row)} && exit 0\nexit 9\n',
+    )
+    assert MemoryReadProvider(memory_bin=fake).list(subject="s") == [
+        MemoryObservation("project", "s", "n", "d", date="2026-06-01")
+    ]
+
+
+def test_list_falls_back_to_text_when_json_is_refused(tmp_path):
+    fake = _fake_bin(
+        tmp_path,
+        '[[ " $* " == *" --format "* ]] && exit 2\necho "project:s:n — d"\n',
+    )
+    [obs] = MemoryReadProvider(memory_bin=fake).list(subject="s")
+    assert obs.name == "n" and obs.date is None
+
+
+def test_list_falls_back_to_text_when_a_json_row_has_unusable_values(tmp_path):
+    # A numeric date would reach ranking and raise TypeError there.
+    row = '{"type":"project","subject":"s","name":"n","description":"d","date":20260601}'
+    fake = _fake_bin(
+        tmp_path,
+        f'[[ " $* " == *" --format json "* ]] && echo {shlex.quote(row)} && exit 0\n'
+        'echo "project:s:n — d"\n',
+    )
+    [obs] = MemoryReadProvider(memory_bin=fake).list(subject="s")
+    assert obs.name == "n" and obs.date is None
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        '{"type":"project","subject":"s","name":"n","date":20260601}',
+        '{"type":"project","subject":"s","name":null}',
+        '{"type":"project","subject":"s","name":""}',
+        '{"type":"project","subject":7,"name":"n"}',
+        '{"type":"project","subject":"s","name":"n","description":5}',
+    ],
+    ids=["numeric-date", "null-name", "empty-name", "non-string-subject", "non-string-description"],
+)
+def test_parse_json_rows_rejects_rows_with_unusable_values(row):
+    assert _parse_json_rows(row) is None
+
+
+def test_parse_json_rows_accepts_null_description_and_missing_date():
+    assert _parse_json_rows('{"type":"project","subject":"s","name":"n","description":null}') == [
+        MemoryObservation("project", "s", "n", "")
+    ]
 
 
 # ----- parser unit tests -----

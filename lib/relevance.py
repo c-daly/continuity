@@ -28,26 +28,33 @@ HALF_LIFE_BY_TYPE = {
 }
 _DEFAULT_HALF_LIFE = 30.0
 _FREQ_WEIGHT = 0.1
+# Surfaced count is bounded so a long-pinned entry cannot outrank fresh ones.
+_FREQ_CAP = 3
 
 
-def _age_days(name: str, today: date) -> int:
-    """Days between `today` and the YYYY-MM-DD prefix of `name`.
+def _age_days(name: str, today: date, entry_date: Optional[str] = None) -> int:
+    """Days between `today` and the date of the entry.
 
-    Memory entries are named `<YYYY-MM-DD>-<slug>`. Names with no parseable
-    date prefix return 0 (treated as current; not penalized).
+    Uses `entry_date` (the real file date) when it parses, else the
+    YYYY-MM-DD prefix of `name`. With neither parseable, returns 0 (treated
+    as current; not penalized).
     """
-    try:
-        entry_date = date.fromisoformat(name[:10])
-    except ValueError:
-        return 0
-    return max(0, (today - entry_date).days)
+    for candidate in (entry_date, name[:10]):
+        if not candidate:
+            continue
+        try:
+            parsed = date.fromisoformat(candidate)
+        except ValueError:
+            continue
+        return max(0, (today - parsed).days)
+    return 0
 
 
 def score(obs: MemoryObservation, freq: int, today: date) -> float:
-    """Effective score = exp(-age / half_life(type)) + _FREQ_WEIGHT * freq."""
+    """Effective score = exp(-age / half_life(type)) + _FREQ_WEIGHT * min(freq, _FREQ_CAP)."""
     half_life = HALF_LIFE_BY_TYPE.get(obs.type, _DEFAULT_HALF_LIFE)
-    recency = math.exp(-_age_days(obs.name, today) / half_life)
-    return recency + _FREQ_WEIGHT * freq
+    recency = math.exp(-_age_days(obs.name, today, obs.date) / half_life)
+    return recency + _FREQ_WEIGHT * min(freq, _FREQ_CAP)
 
 
 def index_path() -> Path:

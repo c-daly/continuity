@@ -145,18 +145,41 @@ def _parse_json_rows(text: str) -> Optional[list[MemoryObservation]]:
             continue
         try:
             row = json.loads(line)
-            observations.append(
-                MemoryObservation(
-                    type=row["type"],
-                    subject=row["subject"],
-                    name=row["name"],
-                    description=row.get("description") or "",
-                    date=row.get("date"),
-                )
-            )
-        except (ValueError, KeyError, TypeError, AttributeError):
+        except ValueError:
             return None
+        observation = _observation_from_row(row)
+        if observation is None:
+            return None
+        observations.append(observation)
     return observations
+
+
+def _observation_from_row(row: object) -> Optional[MemoryObservation]:
+    """Build an observation from one decoded JSON row, or None if it is unusable.
+
+    `type`, `subject` and `name` must be non-empty strings. `description` and
+    `date` may be absent or null, but must be strings when present. A value of
+    the wrong type would otherwise pass here and raise later, during ranking.
+    """
+    if not isinstance(row, dict):
+        return None
+    required = [row.get(key) for key in ("type", "subject", "name")]
+    if not all(isinstance(value, str) and value for value in required):
+        return None
+    description = row.get("description")
+    entry_date = row.get("date")
+    if description is not None and not isinstance(description, str):
+        return None
+    if entry_date is not None and not isinstance(entry_date, str):
+        return None
+    type_, subject, name = required
+    return MemoryObservation(
+        type=type_,
+        subject=subject,
+        name=name,
+        description=description or "",
+        date=entry_date,
+    )
 
 
 def _parse_list_output(text: str) -> list[MemoryObservation]:
